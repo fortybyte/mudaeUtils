@@ -19,7 +19,7 @@ for (let i = 0; i < letters.length; i++) {
 
 			const filteredWords = words.filter(word => word.includes(combo) && word.length > 3);
 			const foundWord = filteredWords.length > 0
-				? filteredWords.reduce((shortest, current) => current.length < shortest.length ? current : shortest)
+				? filteredWords.reduce((shortest, current) => current.length > shortest.length ? current : shortest)
 				: undefined;
 
 

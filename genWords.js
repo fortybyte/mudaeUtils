@@ -18,7 +18,9 @@ for (let i = 0; i < letters.length; i++) {
 			const combo = letters[i] + letters[j] + letters[k];
 
 			// Example: find the *first* word containing that combo
-			const foundWord = words.find(word => word.includes(combo) && word.length > 3);
+			const filteredWords = words.filter(word => word.includes(combo) && word.length > 3);
+			const foundWord = filteredWords.length > 0 ? filteredWords[Math.floor(Math.random() * filteredWords.length)] : undefined;
+
 
 			// If no match found, store null (or store the combo itself, or whatever you like)
 			comboMap[combo] = foundWord || null;

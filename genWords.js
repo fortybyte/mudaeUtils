@@ -7,6 +7,8 @@ const words = rawWords
 	.split("\n")
 	.map(w => w.trim().toLowerCase())
 	.filter(Boolean);
+const blacklist = ["counterchallenging", "decompartmentalism","creditworthiness","depersonalisation","kirkcudbrightshire","northamptonshire","palaeontologists","establishmentarians","harpsichordists","contrapositions","creditworthiness","contrabassoons","groundbreaking","paleoanthropology","aberdeenshire","uncharacteristically","jurisprudentially","establishmentarians","avariciousness","depersonalisation","aberdeenshire","ambassadorships","maximisation","hi"];
+
 
 // 2. Generate all 3-letter combos
 const letters = "abcdefghijklmnopqrstuvwxyz";
@@ -17,11 +19,14 @@ for (let i = 0; i < letters.length; i++) {
 		for (let k = 0; k < letters.length; k++) {
 			const combo = letters[i] + letters[j] + letters[k];
 
-			const filteredWords = words.filter(word => word.includes(combo) && word.length > 3);
+			const filteredWords = words.filter(word =>
+				word.includes(combo) &&
+				word.length > 3 &&
+				!blacklist.includes(word)
+			);
 			const foundWord = filteredWords.length > 0
-				? filteredWords.reduce((shortest, current) => current.length > shortest.length ? current : shortest)
+				? filteredWords.reduce((longest, current) => current.length > longest.length ? current : longest)
 				: undefined;
-
 
 
 			// If no match found, store null (or store the combo itself, or whatever you like)

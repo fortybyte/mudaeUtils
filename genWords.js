@@ -43,7 +43,15 @@ for (let i = 0; i < letters.length; i++) {
 	for (let j = 0; j < letters.length; j++) {
 		for (let k = 0; k < letters.length; k++) {
 			const combo = letters[i] + letters[j] + letters[k];
-			const foundWord = findWord(combo);
+			const filteredWords = words.filter(word =>
+				word.includes(combo) &&
+				word.length > 3 &&
+				!blacklist.includes(word)
+			);
+
+			const foundWord = filteredWords.length > 0
+				? filteredWords.reduce((longest, current) => current.length > longest.length ? current : longest)
+				: null;
 
 
 			// If no match found, store null (or store the combo itself, or whatever you like)
@@ -53,5 +61,5 @@ for (let i = 0; i < letters.length; i++) {
 }
 
 // 3. Write out map.json
-fs.writeFileSync("map.json", JSON.stringify(comboMap, null, 2));
+fs.writeFileSync("mapLong.json", JSON.stringify(comboMap, null, 2));
 console.log("Done! Created 'map.json' with all 3-letter combos.");

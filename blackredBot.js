@@ -462,4 +462,5 @@ async function cmdStop() {
 			console.log('  start               Start (activate) all bots and begin polling');
 			console.log('  stop                Stop (deactivate) all bots');
 			break;
-	})();
+	}
+})();

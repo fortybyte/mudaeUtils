@@ -200,69 +200,102 @@ async function fetchChatLogs(bot, channelId) {
 
 const BLACK_TEA_USER_ID = '432610292342587392';
 // We'll load the map from GitHub:
-const MAP_URL = 'https://fortybyte.github.io/wordMap/map.json';
-let comboMap = {};
-let comboMapLoaded = false;
+// 1) Two URLs for the short vs. long maps
+const MAP_URL = "https://fortybyte.github.io/wordMap/map.json";      // for Black Tea
+const MAP_LONG_URL = "https://fortybyte.github.io/wordMap/mapLong.json"; // for Red Tea
 
-async function initComboMap() {
+// 2) Two map objects & loaded flags
+let blackTeaMap = {};
+let redTeaMap = {};
+let blackTeaMapLoaded = false;
+let redTeaMapLoaded = false;
+
+
+async function initComboMaps() {
 	try {
-		const resp = await fetch(MAP_URL);
-		if (!resp.ok) {
-			throw new Error(`Failed to load map.json: ${resp.status}`);
-		}
-		comboMap = await resp.json();
-		comboMapLoaded = true;
-		console.log(`Loaded comboMap with ${Object.keys(comboMap).length} 3-letter combos`);
+		// Fetch the "black tea" map
+		const resp1 = await fetch(MAP_URL);
+		if (!resp1.ok) throw new Error(`Failed to load map.json: ${resp1.status}`);
+		blackTeaMap = await resp1.json();
+		blackTeaMapLoaded = true;
+
+		// Fetch the "red tea" map
+		const resp2 = await fetch(MAP_LONG_URL);
+		if (!resp2.ok) throw new Error(`Failed to load mapLong.json: ${resp2.status}`);
+		redTeaMap = await resp2.json();
+		redTeaMapLoaded = true;
+
+		console.log(
+			"Loaded blackTeaMap with",
+			Object.keys(blackTeaMap).length,
+			"entries, and redTeaMap with",
+			Object.keys(redTeaMap).length,
+			"entries."
+		);
 	} catch (err) {
-		console.error('Error loading comboMap:', err);
+		console.error("Error loading tea maps:", err);
 	}
 }
+
 
 async function handleBlackTeaGame(bot, msg, channelId) {
 	// If the message is from ourselves, skip
 	if (msg.author && msg.author.id === bot.ownUserId) {
 		return false;
 	}
+
 	// 1) Check for embed with "The Black Teaword will start!" or "The Red Teaword will start!"
 	if (Array.isArray(msg.embeds) && msg.embeds.length > 0) {
 		for (const embed of msg.embeds) {
-			if (
-				(embed.title && embed.title.includes('The Black Teaword will start!')) ||
-				(embed.title && embed.title.includes('The Red Teaword will start!'))
-			) {
-				log(bot, 'Tea game detected! Mark inBlackTeaGame = true');
+			if (embed.title && embed.title.includes("The Black Teaword will start!")) {
+				log(bot, "Black Tea game detected! Setting inBlackTeaGame = true, inRedTeaGame = false");
 				await reactToMessage(bot, channelId, msg.id);
 				bot.inBlackTeaGame = true;
+				bot.inRedTeaGame = false;
+				return true;
+			} else if (embed.title && embed.title.includes("The Red Teaword will start!")) {
+				log(bot, "Red Tea game detected! Setting inRedTeaGame = true, inBlackTeaGame = false");
+				await reactToMessage(bot, channelId, msg.id);
+				bot.inBlackTeaGame = false;
+				bot.inRedTeaGame = true;
 				return true;
 			}
 		}
 	}
 
-	// 2) If in a Black Tea game, respond if we see the coffee format
-	if (bot.inBlackTeaGame && msg.author.id === BLACK_TEA_USER_ID && comboMapLoaded) {
+	// 2) If in a Tea game, respond if we see the coffee format
+	const isInTeaGame = bot.inBlackTeaGame || bot.inRedTeaGame;
+	if (isInTeaGame && msg.author.id === BLACK_TEA_USER_ID) {
+		// Decide which map to use
+		let currentMap = null;
+		if (bot.inBlackTeaGame && blackTeaMapLoaded) {
+			currentMap = blackTeaMap;
+		} else if (bot.inRedTeaGame && redTeaMapLoaded) {
+			currentMap = redTeaMap;
+		} else {
+			// If neither map is loaded yet, or we don't know which game
+			return false;
+		}
+
+		// Regex #1: Check the coffee prompt
 		const coffeeRegex = new RegExp(
 			`^:coffee:\\s+<@!?${bot.ownUserId}>\\s+Type a word containing:\\s+\\*\\*(.{3})\\*\\*`,
-			'i'
+			"i"
 		);
 		const match = msg.content.match(coffeeRegex);
 		if (match && match[1]) {
 			const threeChars = match[1].toLowerCase();
-			let result = comboMap[threeChars];
-			if (!result) {
-				result = 'give up';
-			}
+			let result = currentMap[threeChars] || "give up";
 			await sendMessage(bot, result, channelId);
 			return true;
 		}
-		// Fallback if the coffeeRegex doesn't match exactly
+
+		// Regex #2 (fallback): Catch any "**XXX**" substring
 		const fallbackPattern = /\*\*(.{3})\*\*/;
 		const fallbackMatch = fallbackPattern.exec(msg.content);
 		if (fallbackMatch && fallbackMatch[1]) {
 			const threeChars = fallbackMatch[1].toLowerCase();
-			let result = comboMap[threeChars];
-			if (!result) {
-				result = 'give up';
-			}
+			let result = currentMap[threeChars] || "give up";
 			await sendMessage(bot, result, channelId);
 			return true;
 		}
@@ -270,6 +303,7 @@ async function handleBlackTeaGame(bot, msg, channelId) {
 
 	return false;
 }
+
 
 // ============== POLLING ==============
 
@@ -299,7 +333,7 @@ async function pollChannelsForBot(bot) {
 
 async function pollEngine() {
 	const botList = loadBots();
-	if (!comboMapLoaded) {
+	if (!blackTeaMapLoaded || !redTeaMapLoaded) {
 		// Wait for map to load
 		return;
 	}
@@ -417,7 +451,7 @@ async function cmdStart() {
 	console.log('All bots set to active. Polling loop started.');
 
 	// Start the poll loop
-	await initComboMap();
+	await initComboMaps();
 	setInterval(pollEngine, 2500);
 }
 

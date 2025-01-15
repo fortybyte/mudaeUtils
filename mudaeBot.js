@@ -285,7 +285,8 @@ function containsTriggerKeyword(message) {
 		if (!ENABLE_DEBUG && embed.description) {
 			if (embed.description.toLowerCase().includes(CLAIM_STRING_CHECK.toLowerCase())) {
 				log("Found a claimable message in the embed description!");
-				return true;
+			}else {
+				continue;
 			}
 		}
 
@@ -411,12 +412,9 @@ async function monitorChannels() {
 			}
 
 			// If we just rolled
-			if (shouldRoll) {
-				currentTime = Date.now() + 60_000; // next roll in 1 min or so
-			}
-
-			// Sleep a bit before next poll iteration
-			await wait(3000);
+			// if (shouldRoll && remainingRolls == 0) {
+			// 	currentTime = Date.now(); // next roll in 1 min or so
+			// }
 		} catch (err) {
 			log("Error in monitor loop:", err);
 			await wait(15000);

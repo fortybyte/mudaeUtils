@@ -7,7 +7,7 @@ const words = rawWords
 	.split("\n")
 	.map(w => w.trim().toLowerCase())
 	.filter(Boolean);
-const blacklist = ["counterchallenging", "decompartmentalism","creditworthiness","depersonalisation","kirkcudbrightshire","northamptonshire","palaeontologists","establishmentarians","harpsichordists","contrapositions","creditworthiness","contrabassoons","groundbreaking","paleoanthropology","aberdeenshire","uncharacteristically","jurisprudentially","establishmentarians","avariciousness","depersonalisation","aberdeenshire","ambassadorships","maximisation","hi"];
+const blacklist = ["counterchallenging", "decompartmentalism","creditworthiness","depersonalisation","kirkcudbrightshire","northamptonshire","palaeontologists","establishmentarians","harpsichordists","contrapositions","creditworthiness","contrabassoons","groundbreaking","paleoanthropology","aberdeenshire","uncharacteristically","jurisprudentially","establishmentarians","avariciousness","depersonalisation","aberdeenshire","ambassadorships","maximisation","kirkcudbrightshire","circumnavigators","brightlingsea","establishmentarians","disincarcerating","unselfconsciousness","heliocentricity","macroinstructions","disillusionment","cambridgeshire","brokenheartedly","handicraftsman","misidentifications","oceanographically","misrepresentations","neurotransmitter","incomprehensibility","compartmentalisation","kaleidoscopically","buckinghamshire","macroinstructions","recapitalisation","diacetylmorphine","antivivisection","contrabassoons",];
 
 
 // 2. Generate all 3-letter combos

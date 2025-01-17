@@ -270,14 +270,23 @@ async function handleBlackTeaGame(bot, msg, channelId) {
 		let currentMap = null;
 		if (bot.inBlackTeaGame && blackTeaMapLoaded) {
 			currentMap = blackTeaMap;
+
+			// If we're in Black Tea, ensure the message contains a mention of our user
+			// e.g. <@1234567890> (with optional '!')
+			const mentionRegex = new RegExp(`<@!?${bot.ownUserId}>`);
+			if (!mentionRegex.test(msg.content)) {
+				log(bot, "Ignoring message because it doesn't mention us (Black Tea requirement).");
+				return false;
+			}
 		} else if (bot.inRedTeaGame && redTeaMapLoaded) {
 			currentMap = redTeaMap;
+			// For Red Tea, no mention/ping check is required
 		} else {
 			// If neither map is loaded yet, or we don't know which game
 			return false;
 		}
 
-		// Regex #1: Check the coffee prompt
+		// Regex #1: Check the coffee prompt (`:coffee: <@BOTID> Type a word containing: **XXX**`)
 		const coffeeRegex = new RegExp(
 			`^:coffee:\\s+<@!?${bot.ownUserId}>\\s+Type a word containing:\\s+\\*\\*(.{3})\\*\\*`,
 			"i"

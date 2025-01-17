@@ -275,9 +275,11 @@ function containsTriggerKeyword(message) {
 	}
 	// If debug mode is on, we might react to everything that matches "claimStringCheck"
 	// or "wished" in the content:
-	if (ENABLE_DEBUG && message.content?.toLowerCase().includes("wished")) {
+	if (ENABLE_DEBUG || message.content?.toLowerCase().includes("wished")) {
 		debug("found 'wished' in debug mode");
-		return true;
+		//return true;
+	}else {
+		return false;
 	}
 
 	// If not in debug mode, also check embed.description for the claim string

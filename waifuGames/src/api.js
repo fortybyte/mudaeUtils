@@ -81,8 +81,28 @@ export const api = {
     socket.off(`userInfo-${instanceId}`);
   },
 
+  subscribeAvatarUrl: (instanceId, callback) => {
+    socket.on(`avatarUrl-${instanceId}`, (url) => {
+      callback(`http://localhost:3001${url}`);
+    });
+  },
+
+  unsubscribeAvatarUrl: (instanceId) => {
+    socket.off(`avatarUrl-${instanceId}`);
+  },
+
   sendMessage: async (id, message) => {
     const response = await axios.post(`${API_BASE_URL}/instances/${id}/message`, { message });
+    return response.data;
+  },
+
+  updateLogging: async (id, enabled) => {
+    const response = await axios.post(`${API_BASE_URL}/instances/${id}/logging`, { enabled });
+    return response.data;
+  },
+
+  updateRollsPerHour: async (id, rollsPerHour) => {
+    const response = await axios.post(`${API_BASE_URL}/instances/${id}/rollsPerHour`, { rollsPerHour });
     return response.data;
   },
 

@@ -35,6 +35,11 @@ async function loadSavedInstances() {
         bot.sessionStats = instanceData.sessionStats;
       }
       
+      // Restore rolls per hour
+      if (instanceData.rollsPerHour !== undefined) {
+        bot.rollsPerHour = instanceData.rollsPerHour;
+      }
+      
       bot.on('log', (logEntry) => {
         io.emit(`logs-${id}`, logEntry);
       });
@@ -53,14 +58,28 @@ async function loadSavedInstances() {
       
       bot.on('userInfoUpdate', async (userInfo) => {
         io.emit(`userInfo-${id}`, userInfo);
+        io.emit(`avatarUrl-${id}`, bot.getUserAvatarUrl());
         // Save updated user info
         await persistence.saveInstance(id, {
           token: instanceData.token,
           channelId: instanceData.channelId,
           loggingEnabled: instanceData.loggingEnabled,
           sessionStats: bot.sessionStats,
-          userInfo: userInfo
+          userInfo: userInfo,
+          rollsPerHour: bot.rollsPerHour
         });
+      });
+      
+      bot.on('rollsPerHourUpdate', async (rollsPerHour) => {
+        io.emit(`rollsPerHour-${id}`, rollsPerHour);
+        // Update saved instance
+        const instance = await persistence.getInstance(id);
+        if (instance) {
+          await persistence.saveInstance(id, {
+            ...instance,
+            rollsPerHour
+          });
+        }
       });
       
       botInstances.set(id, bot);
@@ -97,7 +116,8 @@ app.get('/api/instances', async (req, res) => {
       isPaused: bot.isPaused,
       stats: bot.sessionStats,
       userInfo: bot.userInfo,
-      avatarUrl: bot.getUserAvatarUrl()
+      avatarUrl: bot.getUserAvatarUrl(),
+      rollsPerHour: bot.rollsPerHour
     });
   }
   
@@ -146,6 +166,18 @@ app.post('/api/instances', async (req, res) => {
         await persistence.saveInstance(id, {
           ...instance,
           userInfo: userInfo
+        });
+      }
+    });
+    
+    // Set up rolls per hour streaming
+    bot.on('rollsPerHourUpdate', async (rollsPerHour) => {
+      io.emit(`rollsPerHour-${id}`, rollsPerHour);
+      const instance = await persistence.getInstance(id);
+      if (instance) {
+        await persistence.saveInstance(id, {
+          ...instance,
+          rollsPerHour
         });
       }
     });
@@ -332,6 +364,52 @@ app.post('/api/instances/:id/message', async (req, res) => {
   }
 });
 
+app.post('/api/instances/:id/logging', async (req, res) => {
+  const { id } = req.params;
+  const { enabled } = req.body;
+  const bot = botInstances.get(id);
+  
+  if (!bot) {
+    return res.status(404).json({ error: 'Instance not found' });
+  }
+  
+  bot.loggingEnabled = enabled;
+  
+  // Update persistence
+  const instance = await persistence.getInstance(id);
+  if (instance) {
+    await persistence.saveInstance(id, {
+      ...instance,
+      loggingEnabled: enabled
+    });
+  }
+  
+  res.json({ success: true, loggingEnabled: enabled });
+});
+
+app.post('/api/instances/:id/rollsPerHour', async (req, res) => {
+  const { id } = req.params;
+  const { rollsPerHour } = req.body;
+  const bot = botInstances.get(id);
+  
+  if (!bot) {
+    return res.status(404).json({ error: 'Instance not found' });
+  }
+  
+  bot.setRollsPerHour(rollsPerHour);
+  
+  // Update persistence
+  const instance = await persistence.getInstance(id);
+  if (instance) {
+    await persistence.saveInstance(id, {
+      ...instance,
+      rollsPerHour: bot.rollsPerHour
+    });
+  }
+  
+  res.json({ success: true, rollsPerHour: bot.rollsPerHour });
+});
+
 // Backup/Restore endpoints
 app.get('/api/backup', async (req, res) => {
   try {
@@ -415,6 +493,28 @@ app.post('/api/restore', async (req, res) => {
     res.json({ success: true, message: 'Backup restored successfully' });
   } catch (error) {
     res.status(500).json({ error: 'Failed to restore backup' });
+  }
+});
+
+// Avatar proxy endpoint to handle CORS
+app.get('/api/avatar/:userId/:avatarHash', async (req, res) => {
+  const { userId, avatarHash } = req.params;
+  const format = avatarHash.startsWith('a_') ? 'gif' : 'png';
+  const avatarUrl = `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.${format}?size=128`;
+  
+  try {
+    const response = await fetch(avatarUrl);
+    if (!response.ok) {
+      throw new Error('Failed to fetch avatar');
+    }
+    
+    const buffer = await response.arrayBuffer();
+    res.set('Content-Type', `image/${format}`);
+    res.set('Cache-Control', 'public, max-age=86400'); // Cache for 24 hours
+    res.send(Buffer.from(buffer));
+  } catch (error) {
+    // Send default avatar
+    res.redirect(`https://cdn.discordapp.com/embed/avatars/0.png`);
   }
 });
 

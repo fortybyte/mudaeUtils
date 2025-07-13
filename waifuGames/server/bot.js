@@ -17,6 +17,7 @@ class MudaeBot extends EventEmitter {
     this.AUTO_REACTION_EMOJI = "👍";
     
     this.remainingRolls = this.MAX_ROLLS;
+    this.rollsPerHour = 10; // Default value, will be updated from $ru
     this.autoResetMinute = null;
     this.currentTime = Date.now();
     this.lastMessageId = null;
@@ -200,8 +201,32 @@ class MudaeBot extends EventEmitter {
   }
 
   getRandomMinutesInMs() {
-    const rand = Math.floor(Math.random() * 55) + 1;
-    return rand * 60 * 1000;
+    // Calculate delay based on rolls per hour
+    if (this.rollsPerHour <= 0) return 60 * 60 * 1000; // 1 hour if 0 rolls
+    
+    // Average time between rolls in milliseconds
+    const avgTimeBetweenRolls = (60 * 60 * 1000) / this.rollsPerHour;
+    
+    // Add some randomness (±20% variation)
+    const variation = avgTimeBetweenRolls * 0.2;
+    const randomOffset = (Math.random() - 0.5) * 2 * variation;
+    
+    return Math.max(30000, avgTimeBetweenRolls + randomOffset); // Minimum 30 seconds
+  }
+  
+  setRollsPerHour(value) {
+    const numValue = parseInt(value);
+    if (!isNaN(numValue) && numValue >= 0 && numValue <= 60) {
+      this.rollsPerHour = numValue;
+      this.log('info', `Rolls per hour updated to ${this.rollsPerHour}`);
+      
+      // Recalculate next roll time
+      if (this.remainingRolls > 0) {
+        const timeTil = this.timeUntilResetMinute(this.autoResetMinute);
+        const randMs = this.getRandomMinutesInMs();
+        this.currentTime = Date.now() + Math.min(randMs, timeTil);
+      }
+    }
   }
 
   resetRemainingRolls() {
@@ -380,7 +405,15 @@ class MudaeBot extends EventEmitter {
     this.autoResetMinute = (nowMin + timeLeft) % 60;
     this.remainingRolls = rolls;
     
-    this.log('info', `autoResetMinute = ${this.autoResetMinute}, timeLeft = ${timeLeft} min, remainingRolls = ${rolls}`);
+    // Update rolls per hour based on parsed data if available
+    if (timeLeft > 0 && this.MAX_ROLLS > 0) {
+      // Calculate rolls per hour based on reset time
+      const resetMinutes = timeLeft > 0 ? timeLeft : 60;
+      this.rollsPerHour = Math.round((this.MAX_ROLLS / resetMinutes) * 60);
+      this.emit('rollsPerHourUpdate', this.rollsPerHour);
+    }
+    
+    this.log('info', `autoResetMinute = ${this.autoResetMinute}, timeLeft = ${timeLeft} min, remainingRolls = ${rolls}, rollsPerHour = ${this.rollsPerHour}`);
     
     if (timeLeft <= 0) {
       this.autoResetMinute = (nowMin + 36) % 60;
@@ -413,6 +446,11 @@ class MudaeBot extends EventEmitter {
 
         if (this.remainingRolls === 0) {
           this.resetRemainingRolls();
+        } else {
+          // Calculate next roll time based on rolls per hour
+          const nextRollDelay = this.getRandomMinutesInMs();
+          this.currentTime = Date.now() + nextRollDelay;
+          this.log('debug', `Next roll in ~${Math.round(nextRollDelay / 60000)} minutes`);
         }
 
         const messages = await this.fetchChatLogs();
@@ -527,7 +565,8 @@ class MudaeBot extends EventEmitter {
       const defaultIndex = this.userInfo.discriminator ? parseInt(this.userInfo.discriminator) % 5 : 0;
       return `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
     }
-    return `https://cdn.discordapp.com/avatars/${this.userInfo.id}/${this.userInfo.avatar}.png`;
+    // Return proxy URL to avoid CORS issues
+    return `/api/avatar/${this.userInfo.id}/${this.userInfo.avatar}`;
   }
 }
 

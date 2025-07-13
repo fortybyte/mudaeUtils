@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { api } from './api'
+import { api, socket } from './api'
 
 function Instance({ instance, onUpdate, onDelete, isSelected, onToggleSelect, viewMode }) {
   const [formData, setFormData] = useState({
@@ -7,6 +7,9 @@ function Instance({ instance, onUpdate, onDelete, isSelected, onToggleSelect, vi
     channelId: instance.channelId,
     loggingEnabled: instance.loggingEnabled
   })
+  const [loggingEnabled, setLoggingEnabled] = useState(instance.loggingEnabled)
+  const [rollsPerHour, setRollsPerHour] = useState(instance.rollsPerHour || 10)
+  const [rollsPerHourInput, setRollsPerHourInput] = useState(String(instance.rollsPerHour || 10))
   const [logs, setLogs] = useState([])
   const [showLogs, setShowLogs] = useState(false)
   const [stats, setStats] = useState({
@@ -84,6 +87,17 @@ function Instance({ instance, onUpdate, onDelete, isSelected, onToggleSelect, vi
     return () => clearInterval(interval)
   }, [instance.isRunning, instance.isPaused, instance.startTime, instance.elapsedTime])
 
+  // Sync logging state when instance updates
+  useEffect(() => {
+    setLoggingEnabled(instance.loggingEnabled)
+  }, [instance.loggingEnabled])
+
+  // Sync rolls per hour when instance updates
+  useEffect(() => {
+    setRollsPerHour(instance.rollsPerHour || 10)
+    setRollsPerHourInput(String(instance.rollsPerHour || 10))
+  }, [instance.rollsPerHour])
+
   useEffect(() => {
     if (!instance.isFormVisible && instance.isRunning) {
       // Load initial stats
@@ -94,6 +108,11 @@ function Instance({ instance, onUpdate, onDelete, isSelected, onToggleSelect, vi
           }
         })
         .catch(err => console.error('Failed to load stats:', err))
+      
+      // Update avatar URL if available
+      if (instance.avatarUrl) {
+        setAvatarUrl(`http://localhost:3001${instance.avatarUrl}`)
+      }
 
       api.subscribeLogs(instance.id.toString(), (logEntry) => {
         setLogs(prevLogs => [...prevLogs, logEntry].slice(-100))
@@ -105,19 +124,26 @@ function Instance({ instance, onUpdate, onDelete, isSelected, onToggleSelect, vi
       
       api.subscribeUserInfo(instance.id.toString(), (newUserInfo) => {
         setUserInfo(newUserInfo)
-        // Update avatar URL
-        if (newUserInfo) {
-          const url = newUserInfo.avatar 
-            ? `https://cdn.discordapp.com/avatars/${newUserInfo.id}/${newUserInfo.avatar}.png`
-            : `https://cdn.discordapp.com/embed/avatars/${(newUserInfo.discriminator || 0) % 5}.png`
-          setAvatarUrl(url)
-        }
       })
+      
+      api.subscribeAvatarUrl(instance.id.toString(), (url) => {
+        setAvatarUrl(url)
+      })
+      
+      // Subscribe to rolls per hour updates (from $ru parsing)
+      const handleRollsPerHourUpdate = (value) => {
+        setRollsPerHour(value)
+        setRollsPerHourInput(String(value))
+        onUpdate(instance.id, { rollsPerHour: value })
+      }
+      socket.on(`rollsPerHour-${instance.id}`, handleRollsPerHourUpdate)
       
       return () => {
         api.unsubscribeLogs(instance.id.toString())
         api.unsubscribeStats(instance.id.toString())
         api.unsubscribeUserInfo(instance.id.toString())
+        api.unsubscribeAvatarUrl(instance.id.toString())
+        socket.off(`rollsPerHour-${instance.id}`, handleRollsPerHourUpdate)
       }
     }
   }, [instance.id, instance.isFormVisible, instance.isRunning])
@@ -215,6 +241,38 @@ function Instance({ instance, onUpdate, onDelete, isSelected, onToggleSelect, vi
     }
   }
 
+  const handleLoggingToggle = async () => {
+    const newState = !loggingEnabled
+    try {
+      await api.updateLogging(instance.id.toString(), newState)
+      setLoggingEnabled(newState)
+      onUpdate(instance.id, { loggingEnabled: newState })
+    } catch (error) {
+      console.error('Failed to update logging:', error)
+      alert('Failed to update logging')
+    }
+  }
+
+  const handleRollsPerHourSubmit = async (e) => {
+    e.preventDefault()
+    const value = parseInt(rollsPerHourInput)
+    if (isNaN(value) || value < 0 || value > 60) {
+      alert('Rolls per hour must be between 0 and 60')
+      setRollsPerHourInput(String(rollsPerHour))
+      return
+    }
+    
+    try {
+      await api.updateRollsPerHour(instance.id.toString(), value)
+      setRollsPerHour(value)
+      onUpdate(instance.id, { rollsPerHour: value })
+    } catch (error) {
+      console.error('Failed to update rolls per hour:', error)
+      alert('Failed to update rolls per hour')
+      setRollsPerHourInput(String(rollsPerHour))
+    }
+  }
+
   if (!instance.isFormVisible) {
     return (
       <div className={`instance-card ${viewMode} ${isSelected ? 'selected' : ''}`}>
@@ -231,7 +289,11 @@ function Instance({ instance, onUpdate, onDelete, isSelected, onToggleSelect, vi
                 src={avatarUrl} 
                 alt="User Avatar" 
                 className="user-avatar"
+                crossOrigin="anonymous"
+                referrerPolicy="no-referrer"
                 onError={(e) => {
+                  console.log('Avatar failed to load:', avatarUrl)
+                  e.target.onerror = null // Prevent infinite loop
                   e.target.src = `https://cdn.discordapp.com/embed/avatars/0.png`
                 }}
               />
@@ -242,7 +304,30 @@ function Instance({ instance, onUpdate, onDelete, isSelected, onToggleSelect, vi
         <div className="instance-details">
           <p><strong>Token:</strong> {instance.token.substring(0, 10)}...</p>
           <p><strong>Channel ID:</strong> {instance.channelId}</p>
-          <p><strong>Logging:</strong> {instance.loggingEnabled ? 'Enabled' : 'Disabled'}</p>
+          <div className="logging-toggle-container">
+            <strong>Logging:</strong>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={loggingEnabled}
+                onChange={handleLoggingToggle}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
+          <form className="rolls-per-hour-container" onSubmit={handleRollsPerHourSubmit}>
+            <strong>Rolls/Hour:</strong>
+            <input
+              type="number"
+              className="rolls-per-hour-input"
+              value={rollsPerHourInput}
+              onChange={(e) => setRollsPerHourInput(e.target.value)}
+              onBlur={handleRollsPerHourSubmit}
+              min="0"
+              max="60"
+              disabled={!instance.isRunning}
+            />
+          </form>
           <div className="timer-section">
             <p className="timer">
               <strong>Running Time:</strong> {formatTime(displayTime)}

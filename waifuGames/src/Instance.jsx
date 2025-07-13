@@ -14,6 +14,10 @@ function Instance({ instance, onUpdate, onDelete }) {
     claimedCharacters: [],
     sessionStartTime: null
   })
+  const [userInfo, setUserInfo] = useState(instance.userInfo || null)
+  const [avatarUrl, setAvatarUrl] = useState(instance.avatarUrl || null)
+  const [messageInput, setMessageInput] = useState('')
+  const [sendingMessage, setSendingMessage] = useState(false)
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target
@@ -39,6 +43,14 @@ function Instance({ instance, onUpdate, onDelete }) {
       
       if (response.stats) {
         setStats(response.stats)
+      }
+      
+      if (response.userInfo) {
+        setUserInfo(response.userInfo)
+      }
+      
+      if (response.avatarUrl) {
+        setAvatarUrl(response.avatarUrl)
       }
       
       onUpdate(instance.id, {
@@ -91,9 +103,21 @@ function Instance({ instance, onUpdate, onDelete }) {
         setStats(newStats)
       })
       
+      api.subscribeUserInfo(instance.id.toString(), (newUserInfo) => {
+        setUserInfo(newUserInfo)
+        // Update avatar URL
+        if (newUserInfo) {
+          const url = newUserInfo.avatar 
+            ? `https://cdn.discordapp.com/avatars/${newUserInfo.id}/${newUserInfo.avatar}.png`
+            : `https://cdn.discordapp.com/embed/avatars/${(newUserInfo.discriminator || 0) % 5}.png`
+          setAvatarUrl(url)
+        }
+      })
+      
       return () => {
         api.unsubscribeLogs(instance.id.toString())
         api.unsubscribeStats(instance.id.toString())
+        api.unsubscribeUserInfo(instance.id.toString())
       }
     }
   }, [instance.id, instance.isFormVisible, instance.isRunning])
@@ -175,10 +199,40 @@ function Instance({ instance, onUpdate, onDelete }) {
     }
   }
 
+  const handleSendMessage = async (e) => {
+    e.preventDefault()
+    if (!messageInput.trim() || sendingMessage) return
+    
+    setSendingMessage(true)
+    try {
+      await api.sendMessage(instance.id.toString(), messageInput)
+      setMessageInput('')
+    } catch (error) {
+      console.error('Failed to send message:', error)
+      alert('Failed to send message')
+    } finally {
+      setSendingMessage(false)
+    }
+  }
+
   if (!instance.isFormVisible) {
     return (
       <div className="instance-card">
-        <h3>Instance #{instance.id}</h3>
+        <div className="instance-header">
+          <div className="user-info">
+            {avatarUrl && (
+              <img 
+                src={avatarUrl} 
+                alt="User Avatar" 
+                className="user-avatar"
+                onError={(e) => {
+                  e.target.src = `https://cdn.discordapp.com/embed/avatars/0.png`
+                }}
+              />
+            )}
+            <h3>{userInfo?.username || `Instance #${instance.id}`}</h3>
+          </div>
+        </div>
         <div className="instance-details">
           <p><strong>Token:</strong> {instance.token.substring(0, 10)}...</p>
           <p><strong>Channel ID:</strong> {instance.channelId}</p>
@@ -225,6 +279,24 @@ function Instance({ instance, onUpdate, onDelete }) {
             Delete Instance
           </button>
         </div>
+        
+        <form className="message-form" onSubmit={handleSendMessage}>
+          <input
+            type="text"
+            className="message-input"
+            placeholder="Type a message..."
+            value={messageInput}
+            onChange={(e) => setMessageInput(e.target.value)}
+            disabled={!instance.isRunning || sendingMessage}
+          />
+          <button 
+            type="submit" 
+            className="send-button"
+            disabled={!instance.isRunning || !messageInput.trim() || sendingMessage}
+          >
+            {sendingMessage ? 'Sending...' : 'Send'}
+          </button>
+        </form>
         
         {showLogs && (
           <div className="logs-section">

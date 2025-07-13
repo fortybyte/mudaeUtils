@@ -26,7 +26,9 @@ function App() {
           startTime: Date.now(),
           elapsedTime: 0,
           isRunning: newInstance.isRunning,
-          isPaused: newInstance.isPaused
+          isPaused: newInstance.isPaused,
+          userInfo: newInstance.userInfo,
+          avatarUrl: newInstance.avatarUrl
         }]
       })
     }
@@ -56,7 +58,9 @@ function App() {
         startTime: Date.now(),
         elapsedTime: 0,
         isRunning: instance.isRunning,
-        isPaused: instance.isPaused
+        isPaused: instance.isPaused,
+        userInfo: instance.userInfo,
+        avatarUrl: instance.avatarUrl
       }))
       setInstances(formattedInstances)
     } catch (error) {

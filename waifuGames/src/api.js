@@ -69,5 +69,20 @@ export const api = {
   unsubscribeStats: (instanceId) => {
     socket.emit('unsubscribe-stats', instanceId);
     socket.off(`stats-${instanceId}`);
+  },
+
+  subscribeUserInfo: (instanceId, callback) => {
+    socket.emit('subscribe-userInfo', instanceId);
+    socket.on(`userInfo-${instanceId}`, callback);
+  },
+
+  unsubscribeUserInfo: (instanceId) => {
+    socket.emit('unsubscribe-userInfo', instanceId);
+    socket.off(`userInfo-${instanceId}`);
+  },
+
+  sendMessage: async (id, message) => {
+    const response = await axios.post(`${API_BASE_URL}/instances/${id}/message`, { message });
+    return response.data;
   }
 };

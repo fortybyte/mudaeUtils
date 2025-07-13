@@ -33,6 +33,14 @@ class MudaeBot extends EventEmitter {
     this.lastDailyCommandTime = null;
     this.dailyCommandInterval = null;
     
+    // User info
+    this.userInfo = {
+      id: null,
+      username: null,
+      discriminator: null,
+      avatar: null
+    };
+    
     // Load characters
     this.loadCharacters();
   }
@@ -92,8 +100,20 @@ class MudaeBot extends EventEmitter {
     
     this.log('info', `Bot started for channel ${this.channelId}`);
     
-    // Initialize bot
+    // Fetch user info
+    await this.fetchUserInfo();
+    
+    // Initialize bot with delays
+    await this.wait(2000); // 2 second delay before first command
     await this.checkRollUptime();
+    
+    // Check if we should run daily commands on startup
+    const now = Date.now();
+    if (!this.lastDailyCommandTime || now - this.lastDailyCommandTime >= 24 * 60 * 60 * 1000) {
+      await this.wait(3000); // 3 second delay before daily commands
+      await this.executeDailyCommands();
+    }
+    
     this.monitorLoop();
     
     // Start daily command scheduler
@@ -452,7 +472,7 @@ class MudaeBot extends EventEmitter {
       
       // Send $dk command
       await this.sendMessage("$dk");
-      await this.wait(2000);
+      await this.wait(3000); // 3 second delay between commands
       
       // Send $daily command
       await this.sendMessage("$daily");
@@ -462,6 +482,45 @@ class MudaeBot extends EventEmitter {
     } catch (error) {
       this.log('error', 'Failed to execute daily commands:', error.message);
     }
+  }
+
+  async fetchUserInfo() {
+    try {
+      const url = 'https://discord.com/api/v9/users/@me';
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: this.token,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch user info: ${response.status}`);
+      }
+
+      const userData = await response.json();
+      this.userInfo = {
+        id: userData.id,
+        username: userData.username,
+        discriminator: userData.discriminator,
+        avatar: userData.avatar
+      };
+
+      this.log('info', `Logged in as ${userData.username}#${userData.discriminator}`);
+      this.emit('userInfoUpdate', this.userInfo);
+    } catch (error) {
+      this.log('error', 'Failed to fetch user info:', error.message);
+    }
+  }
+
+  getUserAvatarUrl() {
+    if (!this.userInfo.id || !this.userInfo.avatar) {
+      // Return default avatar
+      const defaultIndex = this.userInfo.discriminator ? parseInt(this.userInfo.discriminator) % 5 : 0;
+      return `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
+    }
+    return `https://cdn.discordapp.com/avatars/${this.userInfo.id}/${this.userInfo.avatar}.png`;
   }
 }
 

@@ -43,7 +43,20 @@ async function loadSavedInstances() {
           token: instanceData.token,
           channelId: instanceData.channelId,
           loggingEnabled: instanceData.loggingEnabled,
-          sessionStats: stats
+          sessionStats: stats,
+          userInfo: bot.userInfo
+        });
+      });
+      
+      bot.on('userInfoUpdate', async (userInfo) => {
+        io.emit(`userInfo-${id}`, userInfo);
+        // Save updated user info
+        await persistence.saveInstance(id, {
+          token: instanceData.token,
+          channelId: instanceData.channelId,
+          loggingEnabled: instanceData.loggingEnabled,
+          sessionStats: bot.sessionStats,
+          userInfo: userInfo
         });
       });
       
@@ -79,7 +92,9 @@ app.get('/api/instances', async (req, res) => {
       loggingEnabled: savedInstance?.loggingEnabled || false,
       isRunning: bot.isRunning,
       isPaused: bot.isPaused,
-      stats: bot.sessionStats
+      stats: bot.sessionStats,
+      userInfo: bot.userInfo,
+      avatarUrl: bot.getUserAvatarUrl()
     });
   }
   
@@ -114,8 +129,22 @@ app.post('/api/instances', async (req, res) => {
         channelId,
         loggingEnabled,
         sessionStats: stats,
+        userInfo: bot.userInfo,
         isRunning: true
       });
+    });
+    
+    // Set up user info streaming
+    bot.on('userInfoUpdate', async (userInfo) => {
+      io.emit(`userInfo-${id}`, userInfo);
+      // Update saved instance
+      const instance = await persistence.getInstance(id);
+      if (instance) {
+        await persistence.saveInstance(id, {
+          ...instance,
+          userInfo: userInfo
+        });
+      }
     });
     
     botInstances.set(id, bot);
@@ -134,7 +163,9 @@ app.post('/api/instances', async (req, res) => {
       success: true, 
       message: 'Bot instance created and started',
       logs: bot.getLogs(),
-      stats: bot.sessionStats
+      stats: bot.sessionStats,
+      userInfo: bot.userInfo,
+      avatarUrl: bot.getUserAvatarUrl()
     });
     
     // Notify all connected clients about the new instance
@@ -145,7 +176,9 @@ app.post('/api/instances', async (req, res) => {
       loggingEnabled,
       isRunning: true,
       isPaused: false,
-      stats: bot.sessionStats
+      stats: bot.sessionStats,
+      userInfo: bot.userInfo,
+      avatarUrl: bot.getUserAvatarUrl()
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -275,6 +308,27 @@ app.get('/api/instances/:id/stats', (req, res) => {
   res.json({ stats: bot.sessionStats });
 });
 
+app.post('/api/instances/:id/message', async (req, res) => {
+  const { id } = req.params;
+  const { message } = req.body;
+  const bot = botInstances.get(id);
+  
+  if (!bot) {
+    return res.status(404).json({ error: 'Instance not found' });
+  }
+  
+  if (!message || message.trim() === '') {
+    return res.status(400).json({ error: 'Message cannot be empty' });
+  }
+  
+  try {
+    await bot.sendMessage(message);
+    res.json({ success: true, message: 'Message sent' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to send message' });
+  }
+});
+
 // WebSocket connection
 io.on('connection', (socket) => {
   console.log('Client connected');
@@ -298,6 +352,19 @@ io.on('connection', (socket) => {
   
   socket.on('unsubscribe-stats', (instanceId) => {
     socket.leave(`stats-${instanceId}`);
+  });
+  
+  socket.on('subscribe-userInfo', (instanceId) => {
+    socket.join(`userInfo-${instanceId}`);
+    // Send current user info immediately
+    const bot = botInstances.get(instanceId);
+    if (bot && bot.userInfo) {
+      socket.emit(`userInfo-${instanceId}`, bot.userInfo);
+    }
+  });
+  
+  socket.on('unsubscribe-userInfo', (instanceId) => {
+    socket.leave(`userInfo-${instanceId}`);
   });
   
   socket.on('disconnect', () => {

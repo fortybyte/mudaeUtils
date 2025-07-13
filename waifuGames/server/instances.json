@@ -1,28 +1,2 @@
 {
-  "1752374381470": {
-    "token": "MTMzMzI0NzYzMjE5NzU1NDI1Nw.Gnif4F.4M74nmbEPxHoC4Q9J2nDJjDkzuq9gRWUiCgFs8",
-    "channelId": "1315554678972481546",
-    "loggingEnabled": false,
-    "isRunning": false,
-    "sessionStats": {
-      "totalRolls": 0,
-      "claimedCharacters": [],
-      "sessionStartTime": 1752374384753
-    },
-    "lastSaved": "2025-07-13T02:49:01.991Z",
-    "isPaused": false
-  },
-  "1752374944537": {
-    "token": "MTMzMzI0NzYzMjE5NzU1NDI1Nw.Gnif4F.4M74nmbEPxHoC4Q9J2nDJjDkzuq9gRWUiCgFs8",
-    "channelId": "1315554678972481546",
-    "loggingEnabled": false,
-    "isRunning": false,
-    "sessionStats": {
-      "totalRolls": 0,
-      "claimedCharacters": [],
-      "sessionStartTime": 1752374948254
-    },
-    "lastSaved": "2025-07-13T02:49:15.286Z",
-    "isPaused": false
-  }
 }

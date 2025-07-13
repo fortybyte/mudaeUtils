@@ -84,5 +84,15 @@ export const api = {
   sendMessage: async (id, message) => {
     const response = await axios.post(`${API_BASE_URL}/instances/${id}/message`, { message });
     return response.data;
+  },
+
+  createBackup: async () => {
+    const response = await axios.get(`${API_BASE_URL}/backup`);
+    return response.data;
+  },
+
+  restoreBackup: async (backupData) => {
+    const response = await axios.post(`${API_BASE_URL}/restore`, backupData);
+    return response.data;
   }
 };

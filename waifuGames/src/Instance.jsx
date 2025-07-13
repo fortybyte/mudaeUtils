@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { api } from './api'
 
-function Instance({ instance, onUpdate, onDelete }) {
+function Instance({ instance, onUpdate, onDelete, isSelected, onToggleSelect, viewMode }) {
   const [formData, setFormData] = useState({
     token: instance.token,
     channelId: instance.channelId,
@@ -217,8 +217,14 @@ function Instance({ instance, onUpdate, onDelete }) {
 
   if (!instance.isFormVisible) {
     return (
-      <div className="instance-card">
+      <div className={`instance-card ${viewMode} ${isSelected ? 'selected' : ''}`}>
         <div className="instance-header">
+          <input
+            type="checkbox"
+            className="instance-checkbox"
+            checked={isSelected || false}
+            onChange={() => onToggleSelect && onToggleSelect(instance.id)}
+          />
           <div className="user-info">
             {avatarUrl && (
               <img 

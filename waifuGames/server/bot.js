@@ -41,6 +41,11 @@ class MudaeBot extends EventEmitter {
       avatar: null
     };
     
+    // Auto-recovery
+    this.failureCount = 0;
+    this.maxFailures = 3;
+    this.lastHealthCheck = Date.now();
+    
     // Load characters
     this.loadCharacters();
   }
@@ -231,6 +236,8 @@ class MudaeBot extends EventEmitter {
       
       const data = await response.json();
       this.log('debug', `Message sent: ${content}`);
+      this.lastHealthCheck = Date.now(); // Update health check
+      this.failureCount = 0; // Reset failure count on success
       return data;
     } catch (err) {
       this.log('error', 'sendMessage error:', err.message);

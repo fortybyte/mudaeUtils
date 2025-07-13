@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const http = require('http');
 const MudaeBot = require('./bot');
 const persistence = require('./persistence');
+const encryption = require('./encryption');
 
 const app = express();
 const server = http.createServer(app);
@@ -25,7 +26,9 @@ async function loadSavedInstances() {
   const savedInstances = await persistence.loadInstances();
   for (const [id, instanceData] of Object.entries(savedInstances)) {
     try {
-      const bot = new MudaeBot(instanceData.token, instanceData.channelId, instanceData.loggingEnabled);
+      // Decrypt token
+      const decryptedToken = encryption.decrypt(instanceData.token);
+      const bot = new MudaeBot(decryptedToken, instanceData.channelId, instanceData.loggingEnabled);
       
       // Restore session stats
       if (instanceData.sessionStats) {
@@ -40,7 +43,7 @@ async function loadSavedInstances() {
         io.emit(`stats-${id}`, stats);
         // Save updated stats
         await persistence.saveInstance(id, {
-          token: instanceData.token,
+          token: instanceData.token, // Already encrypted in storage
           channelId: instanceData.channelId,
           loggingEnabled: instanceData.loggingEnabled,
           sessionStats: stats,
@@ -125,7 +128,7 @@ app.post('/api/instances', async (req, res) => {
       io.emit(`stats-${id}`, stats);
       // Save updated stats
       await persistence.saveInstance(id, {
-        token,
+        token: encryption.encrypt(token),
         channelId,
         loggingEnabled,
         sessionStats: stats,
@@ -150,9 +153,9 @@ app.post('/api/instances', async (req, res) => {
     botInstances.set(id, bot);
     bot.start();
     
-    // Save instance to persistence
+    // Save instance to persistence with encrypted token
     await persistence.saveInstance(id, {
-      token,
+      token: encryption.encrypt(token),
       channelId,
       loggingEnabled,
       isRunning: true,
@@ -329,6 +332,92 @@ app.post('/api/instances/:id/message', async (req, res) => {
   }
 });
 
+// Backup/Restore endpoints
+app.get('/api/backup', async (req, res) => {
+  try {
+    const backup = {
+      timestamp: new Date().toISOString(),
+      instances: {}
+    };
+    
+    // Get all saved instances
+    const savedInstances = await persistence.loadInstances();
+    
+    // Include current runtime info
+    for (const [id, data] of Object.entries(savedInstances)) {
+      const bot = botInstances.get(id);
+      backup.instances[id] = {
+        ...data,
+        isRunning: bot?.isRunning || false,
+        isPaused: bot?.isPaused || false,
+        stats: bot?.sessionStats || data.sessionStats
+      };
+    }
+    
+    res.json(backup);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to create backup' });
+  }
+});
+
+app.post('/api/restore', async (req, res) => {
+  try {
+    const { instances } = req.body;
+    
+    if (!instances || typeof instances !== 'object') {
+      return res.status(400).json({ error: 'Invalid backup data' });
+    }
+    
+    // Stop all current instances
+    for (const [id, bot] of botInstances) {
+      bot.stop();
+    }
+    botInstances.clear();
+    
+    // Restore instances
+    for (const [id, instanceData] of Object.entries(instances)) {
+      await persistence.saveInstance(id, instanceData);
+      
+      if (instanceData.isRunning) {
+        try {
+          const decryptedToken = encryption.decrypt(instanceData.token);
+          const bot = new MudaeBot(decryptedToken, instanceData.channelId, instanceData.loggingEnabled);
+          
+          // Set up event handlers
+          bot.on('log', (logEntry) => {
+            io.emit(`logs-${id}`, logEntry);
+          });
+          
+          bot.on('statsUpdate', async (stats) => {
+            io.emit(`stats-${id}`, stats);
+            await persistence.saveInstance(id, {
+              ...instanceData,
+              sessionStats: stats
+            });
+          });
+          
+          bot.on('userInfoUpdate', async (userInfo) => {
+            io.emit(`userInfo-${id}`, userInfo);
+            await persistence.saveInstance(id, {
+              ...instanceData,
+              userInfo
+            });
+          });
+          
+          botInstances.set(id, bot);
+          bot.start();
+        } catch (error) {
+          console.error(`Failed to restore instance ${id}:`, error);
+        }
+      }
+    }
+    
+    res.json({ success: true, message: 'Backup restored successfully' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to restore backup' });
+  }
+});
+
 // WebSocket connection
 io.on('connection', (socket) => {
   console.log('Client connected');
@@ -371,6 +460,34 @@ io.on('connection', (socket) => {
     console.log('Client disconnected');
   });
 });
+
+// Auto-recovery system
+setInterval(() => {
+  for (const [id, bot] of botInstances) {
+    if (bot.isRunning && !bot.isPaused) {
+      const timeSinceLastCheck = Date.now() - bot.lastHealthCheck;
+      
+      // If no activity for 5 minutes, consider it failed
+      if (timeSinceLastCheck > 5 * 60 * 1000) {
+        console.log(`Instance ${id} appears to be unresponsive, attempting recovery...`);
+        bot.failureCount++;
+        
+        if (bot.failureCount <= bot.maxFailures) {
+          // Attempt to restart
+          bot.stop();
+          setTimeout(() => {
+            bot.start();
+            console.log(`Instance ${id} restarted (attempt ${bot.failureCount}/${bot.maxFailures})`);
+          }, 2000);
+        } else {
+          console.error(`Instance ${id} exceeded max failure count, stopping permanently`);
+          bot.stop();
+          io.emit(`instance-failed`, { id, reason: 'Exceeded maximum failure count' });
+        }
+      }
+    }
+  }
+}, 60000); // Check every minute
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {

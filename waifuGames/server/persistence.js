@@ -52,6 +52,7 @@ class Persistence {
     const instances = await this.loadInstances();
     delete instances[id];
     await this.saveInstances(instances);
+    console.log(`Removed instance ${id} from persistence`);
   }
 
   async getInstance(id) {

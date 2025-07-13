@@ -180,12 +180,8 @@ function Instance({ instance, onUpdate, onDelete, isSelected, onToggleSelect, vi
   const handleTerminate = async () => {
     try {
       await api.terminateInstance(instance.id.toString())
-      const elapsed = instance.isPaused ? instance.elapsedTime : Date.now() - instance.startTime + instance.elapsedTime
-      onUpdate(instance.id, {
-        isRunning: false,
-        isPaused: false,
-        elapsedTime: elapsed
-      })
+      // Instance will be deleted from server, so remove it from UI
+      onDelete(instance.id)
     } catch (error) {
       console.error('Failed to terminate:', error)
     }
@@ -249,7 +245,8 @@ function Instance({ instance, onUpdate, onDelete, isSelected, onToggleSelect, vi
       onUpdate(instance.id, { loggingEnabled: newState })
     } catch (error) {
       console.error('Failed to update logging:', error)
-      alert('Failed to update logging')
+      const message = error.response?.data?.error || error.message || 'Failed to update logging'
+      alert(message)
     }
   }
 
@@ -268,7 +265,8 @@ function Instance({ instance, onUpdate, onDelete, isSelected, onToggleSelect, vi
       onUpdate(instance.id, { rollsPerHour: value })
     } catch (error) {
       console.error('Failed to update rolls per hour:', error)
-      alert('Failed to update rolls per hour')
+      const message = error.response?.data?.error || error.message || 'Failed to update rolls per hour'
+      alert(message)
       setRollsPerHourInput(String(rollsPerHour))
     }
   }

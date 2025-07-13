@@ -25,6 +25,13 @@ const botInstances = new Map();
 async function loadSavedInstances() {
   const savedInstances = await persistence.loadInstances();
   for (const [id, instanceData] of Object.entries(savedInstances)) {
+    // Skip instances that weren't running
+    if (!instanceData.isRunning) {
+      console.log(`Skipping instance ${id} - was not running`);
+      await persistence.removeInstance(id);
+      continue;
+    }
+    
     try {
       // Decrypt token
       const decryptedToken = encryption.decrypt(instanceData.token);
@@ -105,13 +112,17 @@ loadSavedInstances().catch(error => {
 app.get('/api/instances', async (req, res) => {
   const instances = [];
   
+  // Only return instances that are in botInstances (active instances)
   for (const [id, bot] of botInstances) {
     const savedInstance = await persistence.getInstance(id);
+    // Skip if no saved data (shouldn't happen but safety check)
+    if (!savedInstance) continue;
+    
     instances.push({
       id,
-      token: savedInstance?.token || '',
-      channelId: savedInstance?.channelId || '',
-      loggingEnabled: savedInstance?.loggingEnabled || false,
+      token: savedInstance.token || '',
+      channelId: savedInstance.channelId || '',
+      loggingEnabled: savedInstance.loggingEnabled || false,
       isRunning: bot.isRunning,
       isPaused: bot.isPaused,
       stats: bot.sessionStats,
@@ -275,18 +286,15 @@ app.post('/api/instances/:id/terminate', async (req, res) => {
   }
   
   bot.stop();
+  botInstances.delete(id); // Remove from active instances
   
-  // Update persistence
-  const instance = await persistence.getInstance(id);
-  if (instance) {
-    await persistence.saveInstance(id, {
-      ...instance,
-      isRunning: false,
-      isPaused: false
-    });
-  }
+  // Remove from persistence since it's terminated
+  await persistence.removeInstance(id);
   
   res.json({ success: true, message: 'Bot terminated' });
+  
+  // Notify all connected clients
+  io.emit('instance-deleted', { id });
 });
 
 app.delete('/api/instances/:id', async (req, res) => {
@@ -365,49 +373,59 @@ app.post('/api/instances/:id/message', async (req, res) => {
 });
 
 app.post('/api/instances/:id/logging', async (req, res) => {
-  const { id } = req.params;
-  const { enabled } = req.body;
-  const bot = botInstances.get(id);
-  
-  if (!bot) {
-    return res.status(404).json({ error: 'Instance not found' });
+  try {
+    const { id } = req.params;
+    const { enabled } = req.body;
+    const bot = botInstances.get(id);
+    
+    if (!bot) {
+      return res.status(404).json({ error: 'Instance not found' });
+    }
+    
+    bot.loggingEnabled = enabled;
+    
+    // Update persistence
+    const instance = await persistence.getInstance(id);
+    if (instance) {
+      await persistence.saveInstance(id, {
+        ...instance,
+        loggingEnabled: enabled
+      });
+    }
+    
+    res.json({ success: true, loggingEnabled: enabled });
+  } catch (error) {
+    console.error('Error updating logging:', error);
+    res.status(500).json({ error: 'Failed to update logging: ' + error.message });
   }
-  
-  bot.loggingEnabled = enabled;
-  
-  // Update persistence
-  const instance = await persistence.getInstance(id);
-  if (instance) {
-    await persistence.saveInstance(id, {
-      ...instance,
-      loggingEnabled: enabled
-    });
-  }
-  
-  res.json({ success: true, loggingEnabled: enabled });
 });
 
 app.post('/api/instances/:id/rollsPerHour', async (req, res) => {
-  const { id } = req.params;
-  const { rollsPerHour } = req.body;
-  const bot = botInstances.get(id);
-  
-  if (!bot) {
-    return res.status(404).json({ error: 'Instance not found' });
+  try {
+    const { id } = req.params;
+    const { rollsPerHour } = req.body;
+    const bot = botInstances.get(id);
+    
+    if (!bot) {
+      return res.status(404).json({ error: 'Instance not found' });
+    }
+    
+    bot.setRollsPerHour(rollsPerHour);
+    
+    // Update persistence
+    const instance = await persistence.getInstance(id);
+    if (instance) {
+      await persistence.saveInstance(id, {
+        ...instance,
+        rollsPerHour: bot.rollsPerHour
+      });
+    }
+    
+    res.json({ success: true, rollsPerHour: bot.rollsPerHour });
+  } catch (error) {
+    console.error('Error updating rolls per hour:', error);
+    res.status(500).json({ error: 'Failed to update rolls per hour: ' + error.message });
   }
-  
-  bot.setRollsPerHour(rollsPerHour);
-  
-  // Update persistence
-  const instance = await persistence.getInstance(id);
-  if (instance) {
-    await persistence.saveInstance(id, {
-      ...instance,
-      rollsPerHour: bot.rollsPerHour
-    });
-  }
-  
-  res.json({ success: true, rollsPerHour: bot.rollsPerHour });
 });
 
 // Backup/Restore endpoints

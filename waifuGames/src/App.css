@@ -209,6 +209,42 @@ h1 {
   background-color: #c82333;
 }
 
+.reset-button {
+  background-color: #fd7e14;
+  color: white;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.reset-button:hover {
+  background-color: #e56a00;
+}
+
+.start-rolling-button {
+  background-color: #20c997;
+  color: white;
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.start-rolling-button:hover:not(:disabled) {
+  background-color: #1aa179;
+}
+
+.start-rolling-button:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .control-buttons .delete-button {
   margin-top: 0;
   background-color: #6c757d;
@@ -772,4 +808,204 @@ body.dark-mode .rolls-per-hour-input:disabled {
 /* Hide in compact mode */
 .instance-card.compact .rolls-per-hour-container {
   display: none;
+}
+
+/* Login styles */
+.login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background-color: #f5f5f5;
+}
+
+body.dark-mode .login-container {
+  background-color: #1a1a1a;
+}
+
+.login-card {
+  background: white;
+  padding: 40px;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 400px;
+}
+
+body.dark-mode .login-card {
+  background: #2a2a2a;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+.login-card h2 {
+  margin-bottom: 10px;
+  text-align: center;
+  color: #333;
+}
+
+body.dark-mode .login-card h2 {
+  color: #e0e0e0;
+}
+
+.login-card p {
+  text-align: center;
+  color: #666;
+  margin-bottom: 30px;
+}
+
+body.dark-mode .login-card p {
+  color: #b0b0b0;
+}
+
+.login-card .form-group {
+  margin-bottom: 20px;
+}
+
+.login-card input[type="password"] {
+  width: 100%;
+  padding: 12px 16px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 16px;
+  transition: border-color 0.3s ease;
+}
+
+body.dark-mode .login-card input[type="password"] {
+  background-color: #1a1a1a;
+  border-color: #404040;
+  color: #e0e0e0;
+}
+
+.login-card input[type="password"]:focus {
+  outline: none;
+  border-color: #007bff;
+}
+
+.login-card button {
+  width: 100%;
+  padding: 12px;
+  background-color: #007bff;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.login-card button:hover:not(:disabled) {
+  background-color: #0056b3;
+}
+
+.login-card button:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+}
+
+.error-message {
+  background-color: #f8d7da;
+  color: #721c24;
+  padding: 10px;
+  border-radius: 4px;
+  margin-bottom: 15px;
+  text-align: center;
+  font-size: 14px;
+}
+
+body.dark-mode .error-message {
+  background-color: #3a1418;
+  color: #f8d7da;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  font-size: 18px;
+  color: #666;
+}
+
+body.dark-mode .loading {
+  color: #b0b0b0;
+}
+
+/* Pending tokens */
+.pending-tokens {
+  background: #f0f8ff;
+  border: 1px solid #007bff;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+body.dark-mode .pending-tokens {
+  background: #1a2332;
+  border-color: #3a5a8a;
+}
+
+.pending-tokens h3 {
+  margin: 0 0 10px 0;
+  color: #007bff;
+}
+
+.pending-tokens-hint {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 15px;
+}
+
+body.dark-mode .pending-tokens-hint {
+  color: #b0b0b0;
+}
+
+.pending-tokens-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pending-token-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: white;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+body.dark-mode .pending-token-item {
+  background: #2a2a2a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.pending-token-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pending-token-time {
+  font-size: 12px;
+  color: #999;
+}
+
+.use-token-button {
+  padding: 6px 16px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s ease;
+}
+
+.use-token-button:hover:not(:disabled) {
+  background-color: #218838;
+}
+
+.use-token-button:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
 }

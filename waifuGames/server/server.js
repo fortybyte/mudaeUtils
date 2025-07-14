@@ -5,18 +5,72 @@ const http = require('http');
 const MudaeBot = require('./bot');
 const persistence = require('./persistence');
 const encryption = require('./encryption');
+const crypto = require('crypto');
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173",
-    methods: ["GET", "POST"]
+    origin: ["http://localhost:5173", "http://10.203.164.7:5173", "http://192.168.1.*:5173"],
+    methods: ["GET", "POST"],
+    credentials: true
   }
 });
 
 app.use(cors());
 app.use(express.json());
+
+// Authentication
+const AUTH_PASSWORD = 'BadApple!';
+const authenticatedSessions = new Map();
+
+// Generate session token
+function generateSessionToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+// Store quick-add tokens temporarily
+const pendingTokens = new Map();
+
+// Authentication endpoint
+app.post('/api/auth/login', (req, res) => {
+  const { password } = req.body;
+  
+  if (password === AUTH_PASSWORD) {
+    const token = generateSessionToken();
+    const sessionData = {
+      authenticated: true,
+      timestamp: Date.now()
+    };
+    authenticatedSessions.set(token, sessionData);
+    
+    // Clean up old sessions (older than 24 hours)
+    for (const [sessionToken, data] of authenticatedSessions) {
+      if (Date.now() - data.timestamp > 24 * 60 * 60 * 1000) {
+        authenticatedSessions.delete(sessionToken);
+      }
+    }
+    
+    res.json({ success: true, token });
+  } else {
+    res.status(401).json({ error: 'Invalid password' });
+  }
+});
+
+// Authentication middleware
+function requireAuth(req, res, next) {
+  const token = req.headers.authorization?.replace('Bearer ', '');
+  
+  if (!token || !authenticatedSessions.has(token)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+  
+  // Update session timestamp
+  const session = authenticatedSessions.get(token);
+  session.timestamp = Date.now();
+  
+  next();
+}
 
 // Store bot instances
 const botInstances = new Map();
@@ -34,7 +88,7 @@ async function loadSavedInstances() {
     
     try {
       // Decrypt token
-      const decryptedToken = encryption.decrypt(instanceData.token);
+      const decryptedToken = await encryption.decrypt(instanceData.token);
       const bot = new MudaeBot(decryptedToken, instanceData.channelId, instanceData.loggingEnabled);
       
       // Restore session stats
@@ -77,17 +131,6 @@ async function loadSavedInstances() {
         });
       });
       
-      bot.on('rollsPerHourUpdate', async (rollsPerHour) => {
-        io.emit(`rollsPerHour-${id}`, rollsPerHour);
-        // Update saved instance
-        const instance = await persistence.getInstance(id);
-        if (instance) {
-          await persistence.saveInstance(id, {
-            ...instance,
-            rollsPerHour
-          });
-        }
-      });
       
       botInstances.set(id, bot);
       
@@ -109,7 +152,7 @@ loadSavedInstances().catch(error => {
 });
 
 // API Routes
-app.get('/api/instances', async (req, res) => {
+app.get('/api/instances', requireAuth, async (req, res) => {
   const instances = [];
   
   // Only return instances that are in botInstances (active instances)
@@ -135,7 +178,7 @@ app.get('/api/instances', async (req, res) => {
   res.json({ instances });
 });
 
-app.post('/api/instances', async (req, res) => {
+app.post('/api/instances', requireAuth, async (req, res) => {
   const { id, token, channelId, loggingEnabled } = req.body;
   
   if (!id || !token || !channelId) {
@@ -159,7 +202,7 @@ app.post('/api/instances', async (req, res) => {
       io.emit(`stats-${id}`, stats);
       // Save updated stats
       await persistence.saveInstance(id, {
-        token: encryption.encrypt(token),
+        token: await encryption.encrypt(token),
         channelId,
         loggingEnabled,
         sessionStats: stats,
@@ -181,24 +224,13 @@ app.post('/api/instances', async (req, res) => {
       }
     });
     
-    // Set up rolls per hour streaming
-    bot.on('rollsPerHourUpdate', async (rollsPerHour) => {
-      io.emit(`rollsPerHour-${id}`, rollsPerHour);
-      const instance = await persistence.getInstance(id);
-      if (instance) {
-        await persistence.saveInstance(id, {
-          ...instance,
-          rollsPerHour
-        });
-      }
-    });
     
     botInstances.set(id, bot);
     bot.start();
     
     // Save instance to persistence with encrypted token
     await persistence.saveInstance(id, {
-      token: encryption.encrypt(token),
+      token: await encryption.encrypt(token),
       channelId,
       loggingEnabled,
       isRunning: true,
@@ -231,7 +263,7 @@ app.post('/api/instances', async (req, res) => {
   }
 });
 
-app.post('/api/instances/:id/pause', async (req, res) => {
+app.post('/api/instances/:id/pause', requireAuth, async (req, res) => {
   const { id } = req.params;
   const bot = botInstances.get(id);
   
@@ -254,7 +286,7 @@ app.post('/api/instances/:id/pause', async (req, res) => {
   res.json({ success: true, message: 'Bot paused' });
 });
 
-app.post('/api/instances/:id/resume', async (req, res) => {
+app.post('/api/instances/:id/resume', requireAuth, async (req, res) => {
   const { id } = req.params;
   const bot = botInstances.get(id);
   
@@ -277,7 +309,57 @@ app.post('/api/instances/:id/resume', async (req, res) => {
   res.json({ success: true, message: 'Bot resumed' });
 });
 
-app.post('/api/instances/:id/terminate', async (req, res) => {
+app.post('/api/instances/:id/reset', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const bot = botInstances.get(id);
+  
+  if (!bot) {
+    return res.status(404).json({ error: 'Instance not found' });
+  }
+  
+  // Reset the bot
+  bot.resetSession();
+  
+  // Update persistence
+  const instance = await persistence.getInstance(id);
+  if (instance) {
+    await persistence.saveInstance(id, {
+      ...instance,
+      sessionStats: bot.sessionStats
+    });
+  }
+  
+  res.json({ 
+    success: true, 
+    message: 'Instance reset successfully',
+    stats: bot.sessionStats 
+  });
+  
+  // Notify clients of the reset
+  io.emit(`stats-${id}`, bot.sessionStats);
+});
+
+app.post('/api/instances/:id/startrolling', requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const bot = botInstances.get(id);
+  
+  if (!bot) {
+    return res.status(404).json({ error: 'Instance not found' });
+  }
+  
+  try {
+    await bot.manualRoll();
+    res.json({ 
+      success: true, 
+      message: 'Roll sent successfully!',
+      stats: bot.sessionStats
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Failed to roll' });
+  }
+});
+
+app.post('/api/instances/:id/terminate', requireAuth, async (req, res) => {
   const { id } = req.params;
   const bot = botInstances.get(id);
   
@@ -297,7 +379,7 @@ app.post('/api/instances/:id/terminate', async (req, res) => {
   io.emit('instance-deleted', { id });
 });
 
-app.delete('/api/instances/:id', async (req, res) => {
+app.delete('/api/instances/:id', requireAuth, async (req, res) => {
   const { id } = req.params;
   const bot = botInstances.get(id);
   
@@ -317,7 +399,7 @@ app.delete('/api/instances/:id', async (req, res) => {
   io.emit('instance-deleted', { id });
 });
 
-app.get('/api/instances/:id/logs', (req, res) => {
+app.get('/api/instances/:id/logs', requireAuth, (req, res) => {
   const { id } = req.params;
   const bot = botInstances.get(id);
   
@@ -328,7 +410,7 @@ app.get('/api/instances/:id/logs', (req, res) => {
   res.json({ logs: bot.getLogs() });
 });
 
-app.post('/api/instances/:id/logs/clear', (req, res) => {
+app.post('/api/instances/:id/logs/clear', requireAuth, (req, res) => {
   const { id } = req.params;
   const bot = botInstances.get(id);
   
@@ -340,7 +422,7 @@ app.post('/api/instances/:id/logs/clear', (req, res) => {
   res.json({ success: true, message: 'Logs cleared' });
 });
 
-app.get('/api/instances/:id/stats', (req, res) => {
+app.get('/api/instances/:id/stats', requireAuth, (req, res) => {
   const { id } = req.params;
   const bot = botInstances.get(id);
   
@@ -351,7 +433,7 @@ app.get('/api/instances/:id/stats', (req, res) => {
   res.json({ stats: bot.sessionStats });
 });
 
-app.post('/api/instances/:id/message', async (req, res) => {
+app.post('/api/instances/:id/message', requireAuth, async (req, res) => {
   const { id } = req.params;
   const { message } = req.body;
   const bot = botInstances.get(id);
@@ -372,7 +454,7 @@ app.post('/api/instances/:id/message', async (req, res) => {
   }
 });
 
-app.post('/api/instances/:id/logging', async (req, res) => {
+app.post('/api/instances/:id/logging', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { enabled } = req.body;
@@ -400,7 +482,7 @@ app.post('/api/instances/:id/logging', async (req, res) => {
   }
 });
 
-app.post('/api/instances/:id/rollsPerHour', async (req, res) => {
+app.post('/api/instances/:id/rollsPerHour', requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const { rollsPerHour } = req.body;
@@ -429,7 +511,7 @@ app.post('/api/instances/:id/rollsPerHour', async (req, res) => {
 });
 
 // Backup/Restore endpoints
-app.get('/api/backup', async (req, res) => {
+app.get('/api/backup', requireAuth, async (req, res) => {
   try {
     const backup = {
       timestamp: new Date().toISOString(),
@@ -456,7 +538,7 @@ app.get('/api/backup', async (req, res) => {
   }
 });
 
-app.post('/api/restore', async (req, res) => {
+app.post('/api/restore', requireAuth, async (req, res) => {
   try {
     const { instances } = req.body;
     
@@ -476,7 +558,7 @@ app.post('/api/restore', async (req, res) => {
       
       if (instanceData.isRunning) {
         try {
-          const decryptedToken = encryption.decrypt(instanceData.token);
+          const decryptedToken = await encryption.decrypt(instanceData.token);
           const bot = new MudaeBot(decryptedToken, instanceData.channelId, instanceData.loggingEnabled);
           
           // Set up event handlers
@@ -515,7 +597,63 @@ app.post('/api/restore', async (req, res) => {
 });
 
 // Avatar proxy endpoint to handle CORS
-app.get('/api/avatar/:userId/:avatarHash', async (req, res) => {
+// Token submission endpoint
+app.post('/api/token/submit', requireAuth, async (req, res) => {
+  const { token, username } = req.body;
+  
+  if (!token) {
+    return res.status(400).json({ error: 'Token required' });
+  }
+  
+  // Store token temporarily with metadata
+  const tokenId = Date.now().toString();
+  pendingTokens.set(tokenId, {
+    token,
+    username,
+    timestamp: Date.now()
+  });
+  
+  // Clean up old tokens (older than 5 minutes)
+  for (const [id, data] of pendingTokens) {
+    if (Date.now() - data.timestamp > 5 * 60 * 1000) {
+      pendingTokens.delete(id);
+    }
+  }
+  
+  res.json({ success: true, tokenId });
+});
+
+// Get pending tokens
+app.get('/api/tokens/pending', requireAuth, (req, res) => {
+  const tokens = Array.from(pendingTokens.entries()).map(([id, data]) => ({
+    id,
+    username: data.username,
+    timestamp: data.timestamp
+  }));
+  
+  res.json({ tokens });
+});
+
+// Use a pending token
+app.post('/api/tokens/use/:tokenId', requireAuth, (req, res) => {
+  const { tokenId } = req.params;
+  const tokenData = pendingTokens.get(tokenId);
+  
+  if (!tokenData) {
+    return res.status(404).json({ error: 'Token not found or expired' });
+  }
+  
+  // Remove from pending
+  pendingTokens.delete(tokenId);
+  
+  res.json({ 
+    success: true, 
+    token: tokenData.token,
+    username: tokenData.username 
+  });
+});
+
+app.get('/api/avatar/:userId/:avatarHash', requireAuth, async (req, res) => {
   const { userId, avatarHash } = req.params;
   const format = avatarHash.startsWith('a_') ? 'gif' : 'png';
   const avatarUrl = `https://cdn.discordapp.com/avatars/${userId}/${avatarHash}.${format}?size=128`;
@@ -534,6 +672,17 @@ app.get('/api/avatar/:userId/:avatarHash', async (req, res) => {
     // Send default avatar
     res.redirect(`https://cdn.discordapp.com/embed/avatars/0.png`);
   }
+});
+
+// WebSocket authentication middleware
+io.use((socket, next) => {
+  const token = socket.handshake.auth.token;
+  
+  if (!token || !authenticatedSessions.has(token)) {
+    return next(new Error('Unauthorized'));
+  }
+  
+  next();
 });
 
 // WebSocket connection

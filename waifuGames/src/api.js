@@ -1,8 +1,41 @@
 import axios from 'axios';
 import io from 'socket.io-client';
 
-const API_BASE_URL = 'http://localhost:3001/api';
-export const socket = io('http://localhost:3001');
+const API_BASE_URL = `http://${window.location.hostname}:3001/api`;
+
+// Set up axios interceptor for auth
+axios.interceptors.request.use((config) => {
+  const token = localStorage.getItem('authToken');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Handle auth errors
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Clear token and reload page to show login
+      localStorage.removeItem('authToken');
+      window.location.reload();
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const socket = io(`http://${window.location.hostname}:3001`, {
+  auth: {
+    token: localStorage.getItem('authToken')
+  },
+  autoConnect: false
+});
+
+// Only connect if authenticated
+if (localStorage.getItem('authToken')) {
+  socket.connect();
+}
 
 export const api = {
   socket, // Export socket for use in other components
@@ -23,6 +56,16 @@ export const api = {
 
   resumeInstance: async (id) => {
     const response = await axios.post(`${API_BASE_URL}/instances/${id}/resume`);
+    return response.data;
+  },
+
+  resetInstance: async (id) => {
+    const response = await axios.post(`${API_BASE_URL}/instances/${id}/reset`);
+    return response.data;
+  },
+
+  startRolling: async (id) => {
+    const response = await axios.post(`${API_BASE_URL}/instances/${id}/startrolling`);
     return response.data;
   },
 
@@ -83,7 +126,7 @@ export const api = {
 
   subscribeAvatarUrl: (instanceId, callback) => {
     socket.on(`avatarUrl-${instanceId}`, (url) => {
-      callback(`http://localhost:3001${url}`);
+      callback(`http://${window.location.hostname}:3001${url}`);
     });
   },
 
@@ -113,6 +156,16 @@ export const api = {
 
   restoreBackup: async (backupData) => {
     const response = await axios.post(`${API_BASE_URL}/restore`, backupData);
+    return response.data;
+  },
+
+  getPendingTokens: async () => {
+    const response = await axios.get(`${API_BASE_URL}/tokens/pending`);
+    return response.data;
+  },
+
+  useToken: async (tokenId) => {
+    const response = await axios.post(`${API_BASE_URL}/tokens/use/${tokenId}`);
     return response.data;
   }
 };

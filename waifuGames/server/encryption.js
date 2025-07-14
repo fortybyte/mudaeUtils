@@ -5,7 +5,7 @@ const path = require('path');
 class Encryption {
   constructor() {
     this.keyFile = path.join(__dirname, '.encryption-key');
-    this.ensureKey();
+    this.keyPromise = this.ensureKey();
   }
 
   async ensureKey() {
@@ -40,7 +40,8 @@ class Encryption {
     return Buffer.from(array).toString('hex');
   }
 
-  encrypt(text) {
+  async encrypt(text) {
+    await this.keyPromise; // Ensure key is loaded
     if (!text) return '';
     try {
       return CryptoJS.AES.encrypt(text, this.encryptionKey).toString();
@@ -50,7 +51,8 @@ class Encryption {
     }
   }
 
-  decrypt(encryptedText) {
+  async decrypt(encryptedText) {
+    await this.keyPromise; // Ensure key is loaded
     if (!encryptedText) return '';
     try {
       const bytes = CryptoJS.AES.decrypt(encryptedText, this.encryptionKey);

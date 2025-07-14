@@ -111,7 +111,7 @@ function Instance({ instance, onUpdate, onDelete, isSelected, onToggleSelect, vi
       
       // Update avatar URL if available
       if (instance.avatarUrl) {
-        setAvatarUrl(`http://localhost:3001${instance.avatarUrl}`)
+        setAvatarUrl(`http://${window.location.hostname}:3001${instance.avatarUrl}`)
       }
 
       api.subscribeLogs(instance.id.toString(), (logEntry) => {
@@ -130,20 +130,12 @@ function Instance({ instance, onUpdate, onDelete, isSelected, onToggleSelect, vi
         setAvatarUrl(url)
       })
       
-      // Subscribe to rolls per hour updates (from $ru parsing)
-      const handleRollsPerHourUpdate = (value) => {
-        setRollsPerHour(value)
-        setRollsPerHourInput(String(value))
-        onUpdate(instance.id, { rollsPerHour: value })
-      }
-      socket.on(`rollsPerHour-${instance.id}`, handleRollsPerHourUpdate)
       
       return () => {
         api.unsubscribeLogs(instance.id.toString())
         api.unsubscribeStats(instance.id.toString())
         api.unsubscribeUserInfo(instance.id.toString())
         api.unsubscribeAvatarUrl(instance.id.toString())
-        socket.off(`rollsPerHour-${instance.id}`, handleRollsPerHourUpdate)
       }
     }
   }, [instance.id, instance.isFormVisible, instance.isRunning])
@@ -195,6 +187,45 @@ function Instance({ instance, onUpdate, onDelete, isSelected, onToggleSelect, vi
       onDelete(instance.id)
     } catch (error) {
       console.error('Failed to delete:', error)
+    }
+  }
+
+  const handleReset = async () => {
+    if (!confirm('Are you sure you want to reset this instance? This will clear all session statistics and refresh rolls.')) {
+      return
+    }
+    
+    try {
+      const response = await api.resetInstance(instance.id.toString())
+      if (response.success) {
+        // Update local stats
+        setStats(response.stats)
+        // Clear logs if logging is enabled
+        if (loggingEnabled) {
+          setLogs([])
+        }
+        alert('Instance reset successfully!')
+      }
+    } catch (error) {
+      console.error('Failed to reset instance:', error)
+      alert('Failed to reset instance')
+    }
+  }
+
+  const handleStartRolling = async () => {
+    try {
+      const response = await api.startRolling(instance.id.toString())
+      if (response.success) {
+        // Update stats if returned
+        if (response.stats) {
+          setStats(response.stats)
+        }
+        alert('Roll sent successfully!')
+      }
+    } catch (error) {
+      console.error('Failed to roll:', error)
+      const errorMessage = error.response?.data?.error || 'Failed to roll'
+      alert(errorMessage)
     }
   }
 
@@ -358,6 +389,17 @@ function Instance({ instance, onUpdate, onDelete, isSelected, onToggleSelect, vi
               </button>
               <button className="terminate-button" onClick={handleTerminate}>
                 Terminate
+              </button>
+              <button className="reset-button" onClick={handleReset}>
+                Reset
+              </button>
+              <button 
+                className="start-rolling-button" 
+                onClick={handleStartRolling}
+                disabled={!instance.isRunning || instance.isPaused}
+                title={!instance.isRunning ? "Bot not running" : instance.isPaused ? "Bot is paused" : "Manually trigger a roll"}
+              >
+                Roll Now
               </button>
             </>
           )}

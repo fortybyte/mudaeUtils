@@ -3,6 +3,8 @@ import Instance from './Instance'
 import { api, socket } from './api'
 import { useTheme } from './ThemeContext'
 import { useKeyboardShortcuts } from './useKeyboardShortcuts'
+import Login from './Login'
+import PendingTokens from './PendingTokens'
 import './App.css'
 
 function App() {
@@ -11,11 +13,24 @@ function App() {
   const [selectedInstances, setSelectedInstances] = useState(new Set())
   const [searchTerm, setSearchTerm] = useState('')
   const [viewMode, setViewMode] = useState('normal') // 'normal' or 'compact'
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [checkingAuth, setCheckingAuth] = useState(true)
   const { isDarkMode, toggleDarkMode } = useTheme()
   const searchInputRef = useRef(null)
 
+  // Check authentication on mount
   useEffect(() => {
-    loadInstances()
+    const token = localStorage.getItem('authToken')
+    if (token) {
+      setIsAuthenticated(true)
+    }
+    setCheckingAuth(false)
+  }, [])
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadInstances()
+    }
     
     // Listen for instance changes from other tabs/clients
     const handleInstanceCreated = (newInstance) => {
@@ -51,7 +66,7 @@ function App() {
       socket.off('instance-created', handleInstanceCreated)
       socket.off('instance-deleted', handleInstanceDeleted)
     }
-  }, [])
+  }, [isAuthenticated])
 
   const loadInstances = async () => {
     try {
@@ -77,17 +92,18 @@ function App() {
     }
   }
 
-  const createNewInstance = () => {
+  const createNewInstance = (prefillToken = '', prefillUsername = '') => {
     const newInstance = {
       id: Date.now(),
-      token: '',
+      token: prefillToken,
       channelId: '',
       loggingEnabled: false,
       isFormVisible: true,
       startTime: null,
       elapsedTime: 0,
       isRunning: false,
-      isPaused: false
+      isPaused: false,
+      userInfo: prefillUsername ? { username: prefillUsername } : null
     }
     setInstances([...instances, newInstance])
   }
@@ -128,27 +144,55 @@ function App() {
   }
 
   const bulkOperation = async (operation) => {
+    // Confirm delete operation once for all
+    if (operation === 'delete') {
+      if (!confirm(`Are you sure you want to delete ${selectedInstances.size} selected instances?`)) {
+        return // Cancel if user doesn't confirm
+      }
+    }
+    
     const promises = []
+    
     for (const id of selectedInstances) {
+      const instance = instances.find(i => i.id === id)
+      if (!instance) continue
+      
       if (operation === 'start') {
-        const instance = instances.find(i => i.id === id)
-        if (instance && !instance.isRunning) {
+        if (instance.isRunning && instance.isPaused) {
           promises.push(api.resumeInstance(id.toString()))
         }
       } else if (operation === 'stop') {
-        promises.push(api.pauseInstance(id.toString()))
+        if (instance.isRunning && !instance.isPaused) {
+          promises.push(api.pauseInstance(id.toString()))
+        }
       } else if (operation === 'delete') {
         promises.push(api.deleteInstance(id.toString()))
       }
     }
     
-    await Promise.all(promises)
-    
-    if (operation === 'delete') {
-      setInstances(prev => prev.filter(i => !selectedInstances.has(i.id)))
-      setSelectedInstances(new Set())
-    } else {
-      loadInstances() // Reload to get updated states
+    try {
+      await Promise.all(promises)
+      
+      if (operation === 'delete') {
+        setInstances(prev => prev.filter(i => !selectedInstances.has(i.id)))
+        setSelectedInstances(new Set())
+      } else {
+        // Update local state for pause/resume without full reload
+        setInstances(prev => prev.map(instance => {
+          if (selectedInstances.has(instance.id)) {
+            if (operation === 'stop') {
+              return { ...instance, isPaused: true }
+            } else if (operation === 'start') {
+              return { ...instance, isPaused: false }
+            }
+          }
+          return instance
+        }))
+      }
+    } catch (error) {
+      console.error(`Failed to ${operation} instances:`, error)
+      alert(`Failed to ${operation} some instances`)
+      loadInstances() // Reload on error
     }
   }
 
@@ -216,6 +260,22 @@ function App() {
     input.click()
   }
 
+  const handleLogin = (token) => {
+    setIsAuthenticated(true)
+    // Reconnect socket with auth token
+    socket.disconnect()
+    socket.auth = { token }
+    socket.connect()
+  }
+
+  if (checkingAuth) {
+    return <div className="app"><div className="loading">Loading...</div></div>
+  }
+
+  if (!isAuthenticated) {
+    return <Login onLogin={handleLogin} />
+  }
+
   return (
     <div className="app">
       <div className="app-header">
@@ -239,6 +299,8 @@ function App() {
           </button>
         </div>
       </div>
+      
+      <PendingTokens onTokenSelect={(token, username) => createNewInstance(token, username)} />
       
       <div className="controls-section">
         <button className="create-button" onClick={createNewInstance}>

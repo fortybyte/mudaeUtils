@@ -1,0 +1,15 @@
+Server running on port 3001
+instances.json file exists
+[2025-07-14T00:07:43.251Z] [INFO] [Bot] Bot started for channel 1315554678972481546
+Loaded saved instance: 1752450030610
+[2025-07-14T00:07:43.286Z] [INFO] [Bot] Loaded 228 character triggers
+[2025-07-14T00:07:43.604Z] [INFO] [sky_yuo] Logged in as sky_yuo#0
+Saved 1 instances to disk
+Saved instance 1752450030610 to persistence
+[2025-07-14T00:07:43.862Z] [DEBUG] [sky_yuo] Message sent: $ru
+[2025-07-14T00:07:46.633Z] [INFO] [sky_yuo] autoResetMinute = 31, timeLeft = 24 min, remainingRolls = 0
+[2025-07-14T00:07:46.633Z] [INFO] [sky_yuo] Reset rolls. Next roll in ~24 min, (random + timeTilReset(31))
+[2025-07-14T00:07:46.633Z] [INFO] [sky_yuo] Running daily commands
+[2025-07-14T00:07:47.145Z] [DEBUG] [sky_yuo] Message sent: $dk
+[2025-07-14T00:07:50.329Z] [DEBUG] [sky_yuo] Message sent: $daily
+[2025-07-14T00:07:53.334Z] [INFO] [sky_yuo] Bot initialization complete

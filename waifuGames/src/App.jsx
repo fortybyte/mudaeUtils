@@ -4,7 +4,6 @@ import { api, socket } from './api'
 import { useTheme } from './ThemeContext'
 import { useKeyboardShortcuts } from './useKeyboardShortcuts'
 import Login from './Login'
-import PendingTokens from './PendingTokens'
 import './App.css'
 
 function App() {
@@ -92,10 +91,10 @@ function App() {
     }
   }
 
-  const createNewInstance = (prefillToken = '', prefillUsername = '') => {
+  const createNewInstance = () => {
     const newInstance = {
       id: Date.now(),
-      token: prefillToken,
+      token: '',
       channelId: '',
       loggingEnabled: false,
       isFormVisible: true,
@@ -103,7 +102,7 @@ function App() {
       elapsedTime: 0,
       isRunning: false,
       isPaused: false,
-      userInfo: prefillUsername ? { username: prefillUsername } : null
+      userInfo: null
     }
     setInstances([...instances, newInstance])
   }
@@ -299,8 +298,6 @@ function App() {
           </button>
         </div>
       </div>
-      
-      <PendingTokens onTokenSelect={(token, username) => createNewInstance(token, username)} />
       
       <div className="controls-section">
         <button className="create-button" onClick={createNewInstance}>

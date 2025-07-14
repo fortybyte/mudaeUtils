@@ -1,15 +1,91 @@
 Server running on port 3001
 instances.json file exists
-[2025-07-14T00:07:43.251Z] [INFO] [Bot] Bot started for channel 1315554678972481546
-Loaded saved instance: 1752450030610
-[2025-07-14T00:07:43.286Z] [INFO] [Bot] Loaded 228 character triggers
-[2025-07-14T00:07:43.604Z] [INFO] [sky_yuo] Logged in as sky_yuo#0
-Saved 1 instances to disk
-Saved instance 1752450030610 to persistence
-[2025-07-14T00:07:43.862Z] [DEBUG] [sky_yuo] Message sent: $ru
-[2025-07-14T00:07:46.633Z] [INFO] [sky_yuo] autoResetMinute = 31, timeLeft = 24 min, remainingRolls = 0
-[2025-07-14T00:07:46.633Z] [INFO] [sky_yuo] Reset rolls. Next roll in ~24 min, (random + timeTilReset(31))
-[2025-07-14T00:07:46.633Z] [INFO] [sky_yuo] Running daily commands
-[2025-07-14T00:07:47.145Z] [DEBUG] [sky_yuo] Message sent: $dk
-[2025-07-14T00:07:50.329Z] [DEBUG] [sky_yuo] Message sent: $daily
-[2025-07-14T00:07:53.334Z] [INFO] [sky_yuo] Bot initialization complete
+Found 7 saved instances to load
+Loading instance 1752416845202 (sky_yuo)
+Saved 7 instances to disk
+Saved instance 1752416845202 to persistence
+✓ Successfully loaded and started instance 1752416845202 (sky_yuo)
+Loading instance 1752416993022 (artoriapendragonlancer111)
+Saved 7 instances to disk
+Saved instance 1752416993022 to persistence
+Saved 7 instances to disk
+Saved instance 1752416845202 to persistence
+Saved 7 instances to disk
+Saved instance 1752416845202 to persistence
+✓ Successfully loaded and started instance 1752416993022 (artoriapendragonlancer111)
+Saved 7 instances to disk
+Saved instance 1752416845202 to persistence
+Loading instance 1752416982891 (lenamymom)
+Saved 7 instances to disk
+Saved instance 1752416982891 to persistence
+Saved 7 instances to disk
+Saved instance 1752416845202 to persistence
+Saved 7 instances to disk
+Saved instance 1752416845202 to persistence
+Saved 7 instances to disk
+Saved instance 1752416845202 to persistence
+✓ Successfully loaded and started instance 1752416982891 (lenamymom)
+Saved 7 instances to disk
+Saved instance 1752416845202 to persistence
+Loading instance 1752416891300 (zpnx)
+Saved 7 instances to disk
+Saved instance 1752416891300 to persistence
+Saved 7 instances to disk
+Saved instance 1752416845202 to persistence
+Saved 7 instances to disk
+Saved instance 1752416982891 to persistence
+Saved 7 instances to disk
+Saved instance 1752416845202 to persistence
+Saved 7 instances to disk
+Saved instance 1752416982891 to persistence
+Saved 7 instances to disk
+Saved instance 1752416845202 to persistence
+✓ Successfully loaded and started instance 1752416891300 (zpnx)
+Saved 7 instances to disk
+Saved instance 1752416982891 to persistence
+Saved 7 instances to disk
+Saved instance 1752416845202 to persistence
+Loading instance 1752416915712 (zqnqx)
+Saved 7 instances to disk
+Saved instance 1752416915712 to persistence
+Saved 7 instances to disk
+Saved instance 1752416845202 to persistence
+Saved 7 instances to disk
+Saved instance 1752416891300 to persistence
+Saved 7 instances to disk
+Saved instance 1752416891300 to persistence
+Saved 7 instances to disk
+Saved instance 1752416891300 to persistence
+✓ Successfully loaded and started instance 1752416915712 (zqnqx)
+Loading instance 1752416946322 (bronzeidiot)
+Saved 7 instances to disk
+Saved instance 1752416946322 to persistence
+Saved 7 instances to disk
+Saved instance 1752416891300 to persistence
+Saved 7 instances to disk
+Saved instance 1752416891300 to persistence
+Saved 7 instances to disk
+Saved instance 1752416915712 to persistence
+Saved 7 instances to disk
+Saved instance 1752416891300 to persistence
+Saved 7 instances to disk
+Saved instance 1752416915712 to persistence
+✓ Successfully loaded and started instance 1752416946322 (bronzeidiot)
+Loading instance 1752416965761 (mudaepro)
+Saved 7 instances to disk
+Saved instance 1752416965761 to persistence
+Saved 7 instances to disk
+Saved instance 1752416946322 to persistence
+Saved 7 instances to disk
+Saved instance 1752416946322 to persistence
+Saved 7 instances to disk
+Saved instance 1752416946322 to persistence
+✓ Successfully loaded and started instance 1752416965761 (mudaepro)
+Instance loading complete: 7 successful, 0 failed
+Currently running 7 bot instances
+Saved 7 instances to disk
+Saved instance 1752416965761 to persistence
+Saved 7 instances to disk
+Saved instance 1752416965761 to persistence
+Saved 7 instances to disk
+Saved instance 1752416965761 to persistence

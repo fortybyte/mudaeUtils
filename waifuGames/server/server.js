@@ -29,8 +29,6 @@ function generateSessionToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
-// Store quick-add tokens temporarily
-const pendingTokens = new Map();
 
 // Authentication endpoint
 app.post('/api/auth/login', (req, res) => {
@@ -72,77 +70,173 @@ function requireAuth(req, res, next) {
   next();
 }
 
+
 // Store bot instances
 const botInstances = new Map();
 
 // Load saved instances on startup
 async function loadSavedInstances() {
-  const savedInstances = await persistence.loadInstances();
-  for (const [id, instanceData] of Object.entries(savedInstances)) {
-    // Skip instances that weren't running
-    if (!instanceData.isRunning) {
-      console.log(`Skipping instance ${id} - was not running`);
-      await persistence.removeInstance(id);
-      continue;
+  try {
+    const savedInstances = await persistence.loadInstances();
+    const instanceEntries = Object.entries(savedInstances);
+    
+    console.log(`Found ${instanceEntries.length} saved instances to load`);
+    
+    // Load instances sequentially to avoid race conditions
+    let successCount = 0;
+    let failureCount = 0;
+    
+    for (const [id, instanceData] of instanceEntries) {
+      // Skip instances that weren't running
+      if (!instanceData.isRunning) {
+        console.log(`Skipping instance ${id} - was not running`);
+        await persistence.removeInstance(id);
+        continue;
+      }
+      
+      try {
+        console.log(`Loading instance ${id} (${instanceData.userInfo?.username || 'Unknown'})`);
+        
+        // Decrypt token with error handling
+        let decryptedToken;
+        try {
+          decryptedToken = await encryption.decrypt(instanceData.token);
+          if (!decryptedToken || decryptedToken === instanceData.token) {
+            throw new Error('Token decryption failed or returned encrypted token');
+          }
+        } catch (decryptError) {
+          console.error(`Failed to decrypt token for instance ${id}:`, decryptError.message);
+          console.log(`Removing instance ${id} due to decryption failure`);
+          await persistence.removeInstance(id);
+          failureCount++;
+          continue;
+        }
+        
+        // Create bot instance
+        const bot = new MudaeBot(decryptedToken, instanceData.channelId, instanceData.loggingEnabled);
+        
+        // Restore session stats
+        if (instanceData.sessionStats) {
+          bot.sessionStats = instanceData.sessionStats;
+        }
+        
+        // Restore rolls per hour
+        if (instanceData.rollsPerHour !== undefined) {
+          bot.rollsPerHour = instanceData.rollsPerHour;
+          bot.MAX_ROLLS = Math.max(1, Math.floor(instanceData.rollsPerHour));
+        }
+        
+        // Restore user info if available
+        if (instanceData.userInfo) {
+          bot.userInfo = instanceData.userInfo;
+        }
+        
+        // Set up event handlers
+        bot.on('log', (logEntry) => {
+          io.emit(`logs-${id}`, logEntry);
+        });
+        
+        bot.on('statsUpdate', async (stats) => {
+          io.emit(`stats-${id}`, stats);
+          // Save updated stats
+          try {
+            await persistence.saveInstance(id, {
+              token: instanceData.token, // Already encrypted in storage
+              channelId: instanceData.channelId,
+              loggingEnabled: instanceData.loggingEnabled,
+              sessionStats: stats,
+              userInfo: bot.userInfo,
+              rollsPerHour: bot.rollsPerHour,
+              isRunning: bot.isRunning,
+              isPaused: bot.isPaused
+            });
+          } catch (saveError) {
+            console.error(`Failed to save stats for instance ${id}:`, saveError);
+          }
+        });
+        
+        bot.on('userInfoUpdate', async (userInfo) => {
+          io.emit(`userInfo-${id}`, userInfo);
+          io.emit(`avatarUrl-${id}`, bot.getUserAvatarUrl());
+          // Save updated user info
+          try {
+            await persistence.saveInstance(id, {
+              token: instanceData.token,
+              channelId: instanceData.channelId,
+              loggingEnabled: instanceData.loggingEnabled,
+              sessionStats: bot.sessionStats,
+              userInfo: userInfo,
+              rollsPerHour: bot.rollsPerHour,
+              isRunning: bot.isRunning,
+              isPaused: bot.isPaused
+            });
+          } catch (saveError) {
+            console.error(`Failed to save user info for instance ${id}:`, saveError);
+          }
+        });
+        
+        // Handle token invalidation
+        bot.on('tokenInvalid', (info) => {
+          handleTokenInvalid(bot, id, info);
+        });
+        
+        // Add to bot instances before starting
+        botInstances.set(id, bot);
+        
+        // Start the bot with retry logic
+        if (instanceData.isRunning) {
+          try {
+            await bot.start();
+            console.log(`✓ Successfully loaded and started instance ${id} (${bot.userInfo?.username || 'Unknown'})`);
+            successCount++;
+            
+            // Add delay between bot starts to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+          } catch (startError) {
+            console.error(`Failed to start instance ${id}:`, startError.message);
+            
+            // If start fails, try one more time after a delay
+            console.log(`Retrying start for instance ${id} in 5 seconds...`);
+            await new Promise(resolve => setTimeout(resolve, 5000));
+            
+            try {
+              await bot.start();
+              console.log(`✓ Successfully started instance ${id} on retry`);
+              successCount++;
+            } catch (retryError) {
+              console.error(`Failed to start instance ${id} on retry:`, retryError.message);
+              // Remove failed instance
+              botInstances.delete(id);
+              await persistence.removeInstance(id);
+              failureCount++;
+            }
+          }
+        } else {
+          console.log(`✓ Loaded instance ${id} (not auto-started)`);
+          successCount++;
+        }
+        
+      } catch (error) {
+        console.error(`Failed to load instance ${id}:`, error.message);
+        failureCount++;
+        
+        // Clean up any partial state
+        if (botInstances.has(id)) {
+          const bot = botInstances.get(id);
+          if (bot) {
+            bot.stop();
+          }
+          botInstances.delete(id);
+        }
+      }
     }
     
-    try {
-      // Decrypt token
-      const decryptedToken = await encryption.decrypt(instanceData.token);
-      const bot = new MudaeBot(decryptedToken, instanceData.channelId, instanceData.loggingEnabled);
-      
-      // Restore session stats
-      if (instanceData.sessionStats) {
-        bot.sessionStats = instanceData.sessionStats;
-      }
-      
-      // Restore rolls per hour
-      if (instanceData.rollsPerHour !== undefined) {
-        bot.rollsPerHour = instanceData.rollsPerHour;
-      }
-      
-      bot.on('log', (logEntry) => {
-        io.emit(`logs-${id}`, logEntry);
-      });
-      
-      bot.on('statsUpdate', async (stats) => {
-        io.emit(`stats-${id}`, stats);
-        // Save updated stats
-        await persistence.saveInstance(id, {
-          token: instanceData.token, // Already encrypted in storage
-          channelId: instanceData.channelId,
-          loggingEnabled: instanceData.loggingEnabled,
-          sessionStats: stats,
-          userInfo: bot.userInfo
-        });
-      });
-      
-      bot.on('userInfoUpdate', async (userInfo) => {
-        io.emit(`userInfo-${id}`, userInfo);
-        io.emit(`avatarUrl-${id}`, bot.getUserAvatarUrl());
-        // Save updated user info
-        await persistence.saveInstance(id, {
-          token: instanceData.token,
-          channelId: instanceData.channelId,
-          loggingEnabled: instanceData.loggingEnabled,
-          sessionStats: bot.sessionStats,
-          userInfo: userInfo,
-          rollsPerHour: bot.rollsPerHour
-        });
-      });
-      
-      
-      botInstances.set(id, bot);
-      
-      // Auto-start if it was running
-      if (instanceData.isRunning) {
-        bot.start();
-      }
-      
-      console.log(`Loaded saved instance: ${id}`);
-    } catch (error) {
-      console.error(`Failed to load instance ${id}:`, error);
-    }
+    console.log(`Instance loading complete: ${successCount} successful, ${failureCount} failed`);
+    console.log(`Currently running ${botInstances.size} bot instances`);
+    
+  } catch (error) {
+    console.error('Critical error loading saved instances:', error);
   }
 }
 
@@ -222,6 +316,11 @@ app.post('/api/instances', requireAuth, async (req, res) => {
           userInfo: userInfo
         });
       }
+    });
+    
+    // Handle token invalidation
+    bot.on('tokenInvalid', (info) => {
+      handleTokenInvalid(bot, id, info);
     });
     
     
@@ -582,6 +681,10 @@ app.post('/api/restore', requireAuth, async (req, res) => {
             });
           });
           
+          bot.on('tokenInvalid', (info) => {
+            handleTokenInvalid(bot, id, info);
+          });
+          
           botInstances.set(id, bot);
           bot.start();
         } catch (error) {
@@ -596,62 +699,42 @@ app.post('/api/restore', requireAuth, async (req, res) => {
   }
 });
 
-// Avatar proxy endpoint to handle CORS
-// Token submission endpoint
-app.post('/api/token/submit', requireAuth, async (req, res) => {
-  const { token, username } = req.body;
+// Health check endpoint to verify all bot tokens
+app.get('/api/health/tokens', requireAuth, async (req, res) => {
+  const results = [];
   
-  if (!token) {
-    return res.status(400).json({ error: 'Token required' });
-  }
-  
-  // Store token temporarily with metadata
-  const tokenId = Date.now().toString();
-  pendingTokens.set(tokenId, {
-    token,
-    username,
-    timestamp: Date.now()
-  });
-  
-  // Clean up old tokens (older than 5 minutes)
-  for (const [id, data] of pendingTokens) {
-    if (Date.now() - data.timestamp > 5 * 60 * 1000) {
-      pendingTokens.delete(id);
+  for (const [id, bot] of botInstances) {
+    try {
+      const isValid = await bot.verifyToken();
+      results.push({
+        id,
+        username: bot.userInfo?.username,
+        isValid,
+        lastHealthCheck: new Date(bot.lastHealthCheck).toISOString(),
+        timeSinceLastCheck: Math.round((Date.now() - bot.lastHealthCheck) / 1000),
+        isRunning: bot.isRunning,
+        isPaused: bot.isPaused
+      });
+    } catch (error) {
+      results.push({
+        id,
+        username: bot.userInfo?.username,
+        isValid: false,
+        error: error.message,
+        isRunning: bot.isRunning,
+        isPaused: bot.isPaused
+      });
     }
   }
   
-  res.json({ success: true, tokenId });
-});
-
-// Get pending tokens
-app.get('/api/tokens/pending', requireAuth, (req, res) => {
-  const tokens = Array.from(pendingTokens.entries()).map(([id, data]) => ({
-    id,
-    username: data.username,
-    timestamp: data.timestamp
-  }));
-  
-  res.json({ tokens });
-});
-
-// Use a pending token
-app.post('/api/tokens/use/:tokenId', requireAuth, (req, res) => {
-  const { tokenId } = req.params;
-  const tokenData = pendingTokens.get(tokenId);
-  
-  if (!tokenData) {
-    return res.status(404).json({ error: 'Token not found or expired' });
-  }
-  
-  // Remove from pending
-  pendingTokens.delete(tokenId);
-  
   res.json({ 
-    success: true, 
-    token: tokenData.token,
-    username: tokenData.username 
+    totalInstances: botInstances.size,
+    checkedAt: new Date().toISOString(),
+    results 
   });
 });
+
+// Avatar proxy endpoint to handle CORS
 
 app.get('/api/avatar/:userId/:avatarHash', requireAuth, async (req, res) => {
   const { userId, avatarHash } = req.params;
@@ -728,33 +811,118 @@ io.on('connection', (socket) => {
   });
 });
 
-// Auto-recovery system
-setInterval(() => {
+// Auto-recovery system with improved health monitoring
+setInterval(async () => {
   for (const [id, bot] of botInstances) {
     if (bot.isRunning && !bot.isPaused) {
       const timeSinceLastCheck = Date.now() - bot.lastHealthCheck;
       
-      // If no activity for 5 minutes, consider it failed
+      // If no activity for 5 minutes, consider it potentially unresponsive
       if (timeSinceLastCheck > 5 * 60 * 1000) {
-        console.log(`Instance ${id} appears to be unresponsive, attempting recovery...`);
-        bot.failureCount++;
+        console.log(`Instance ${id} (${bot.userInfo?.username}) has not logged activity for ${Math.round(timeSinceLastCheck / 60000)} minutes`);
         
-        if (bot.failureCount <= bot.maxFailures) {
-          // Attempt to restart
-          bot.stop();
-          setTimeout(() => {
-            bot.start();
-            console.log(`Instance ${id} restarted (attempt ${bot.failureCount}/${bot.maxFailures})`);
-          }, 2000);
-        } else {
-          console.error(`Instance ${id} exceeded max failure count, stopping permanently`);
-          bot.stop();
-          io.emit(`instance-failed`, { id, reason: 'Exceeded maximum failure count' });
+        // First, try to verify if the token is still valid
+        try {
+          const tokenValid = await bot.verifyToken();
+          if (!tokenValid) {
+            console.error(`Instance ${id} has invalid token, removing from active instances`);
+            bot.stop();
+            botInstances.delete(id);
+            
+            // Update persistence to mark as not running
+            const instance = await persistence.getInstance(id);
+            if (instance) {
+              await persistence.saveInstance(id, {
+                ...instance,
+                isRunning: false,
+                stoppedReason: 'Invalid token'
+              });
+            }
+            
+            io.emit('instance-failed', { 
+              id, 
+              reason: 'Token invalid',
+              username: bot.userInfo?.username 
+            });
+            continue;
+          }
+          
+          // Token is valid, bot might just be idle
+          console.log(`Instance ${id} token verified, bot is idle but healthy`);
+          
+        } catch (error) {
+          console.error(`Instance ${id} health check failed:`, error.message);
+          bot.failureCount++;
+          
+          if (bot.failureCount <= bot.maxFailures) {
+            console.log(`Instance ${id} appears unresponsive, attempting recovery (attempt ${bot.failureCount}/${bot.maxFailures})...`);
+            
+            // Stop the bot
+            bot.stop();
+            
+            // Wait a bit then restart
+            setTimeout(async () => {
+              try {
+                await bot.start();
+                console.log(`Instance ${id} successfully restarted`);
+                bot.failureCount = 0; // Reset failure count on successful restart
+              } catch (restartError) {
+                console.error(`Instance ${id} failed to restart:`, restartError.message);
+              }
+            }, 3000);
+            
+          } else {
+            console.error(`Instance ${id} exceeded max failure count (${bot.maxFailures}), stopping permanently`);
+            bot.stop();
+            botInstances.delete(id);
+            
+            // Update persistence
+            const instance = await persistence.getInstance(id);
+            if (instance) {
+              await persistence.saveInstance(id, {
+                ...instance,
+                isRunning: false,
+                stoppedReason: 'Exceeded max failures'
+              });
+            }
+            
+            io.emit('instance-failed', { 
+              id, 
+              reason: 'Exceeded maximum failure count',
+              username: bot.userInfo?.username 
+            });
+          }
         }
       }
     }
   }
 }, 60000); // Check every minute
+
+// Handle token invalid events from bots
+const handleTokenInvalid = async function(bot, id, info) {
+  console.error(`Token invalid for instance ${id} (${info.username})`);
+  
+  // Remove from active instances
+  botInstances.delete(id);
+  
+  // Update persistence
+  const instance = await persistence.getInstance(id);
+  if (instance) {
+    await persistence.saveInstance(id, {
+      ...instance,
+      isRunning: false,
+      stoppedReason: 'Token invalid',
+      tokenInvalidatedAt: new Date().toISOString()
+    });
+  }
+  
+  // Notify connected clients
+  io.emit('instance-failed', {
+    id,
+    reason: 'Token invalid',
+    username: info.username
+  });
+};
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {

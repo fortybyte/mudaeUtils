@@ -59,6 +59,10 @@ class MudaeBot extends EventEmitter {
     this.failureCount = 0;
     this.maxFailures = 3;
     
+    // Token verification tracking
+    this.lastTokenVerification = 0;
+    this.tokenVerificationInterval = 10 * 60 * 1000; // Verify every 10 minutes
+    
     // Load character list
     this.loadCharacters();
   }
@@ -200,6 +204,15 @@ class MudaeBot extends EventEmitter {
     
     this.log('info', `Bot started for channel ${this.channelId}`);
     
+    // Verify token before starting
+    const tokenValid = await this.verifyToken();
+    if (!tokenValid) {
+      this.log('error', 'Token verification failed during startup');
+      this.isRunning = false;
+      this.isMonitoring = false;
+      throw new Error('Invalid token');
+    }
+    
     // Fetch user info
     await this.fetchUserInfo();
     
@@ -293,6 +306,20 @@ class MudaeBot extends EventEmitter {
         if (this.shouldRunDailyCommands(now)) {
           await this.runDailyCommands();
           this.lastDailyExecution = now;
+        }
+        
+        // Periodic token verification
+        if (now - this.lastTokenVerification > this.tokenVerificationInterval) {
+          this.log('debug', 'Performing periodic token verification');
+          const isValid = await this.verifyToken();
+          this.lastTokenVerification = now;
+          
+          if (!isValid) {
+            this.log('error', 'Token is no longer valid, stopping bot');
+            this.emit('tokenInvalid', { id: this.userInfo?.id, username: this.userInfo?.username });
+            this.stop();
+            break;
+          }
         }
         
         // Small delay between iterations
@@ -514,6 +541,37 @@ class MudaeBot extends EventEmitter {
   // Utility: wait for milliseconds
   async wait(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // Verify token is still valid
+  async verifyToken() {
+    try {
+      const url = 'https://discord.com/api/v9/users/@me';
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Authorization': this.token,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response.ok) {
+        if (response.status === 401) {
+          this.log('error', 'Token verification failed - 401 Unauthorized');
+          return false;
+        }
+        this.log('error', `Token verification failed with status: ${response.status}`);
+        return false;
+      }
+      
+      // Update health check on successful verification
+      this.lastHealthCheck = Date.now();
+      return true;
+      
+    } catch (error) {
+      this.log('error', 'Token verification error:', error.message);
+      return false;
+    }
   }
 
   // Control methods

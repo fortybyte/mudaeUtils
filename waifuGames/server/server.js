@@ -176,9 +176,12 @@ async function loadSavedInstances() {
         });
         
         // Handle token invalidation
+        // TEMPORARILY COMMENTED OUT
+        /*
         bot.on('tokenInvalid', (info) => {
           handleTokenInvalid(bot, id, info);
         });
+        */
         
         // Add to bot instances before starting
         botInstances.set(id, bot);
@@ -319,9 +322,12 @@ app.post('/api/instances', requireAuth, async (req, res) => {
     });
     
     // Handle token invalidation
+    // TEMPORARILY COMMENTED OUT
+    /*
     bot.on('tokenInvalid', (info) => {
       handleTokenInvalid(bot, id, info);
     });
+    */
     
     
     botInstances.set(id, bot);
@@ -681,9 +687,12 @@ app.post('/api/restore', requireAuth, async (req, res) => {
             });
           });
           
+          // TEMPORARILY COMMENTED OUT
+          /*
           bot.on('tokenInvalid', (info) => {
             handleTokenInvalid(bot, id, info);
           });
+          */
           
           botInstances.set(id, bot);
           bot.start();
@@ -700,6 +709,8 @@ app.post('/api/restore', requireAuth, async (req, res) => {
 });
 
 // Health check endpoint to verify all bot tokens
+// TEMPORARILY COMMENTED OUT
+/*
 app.get('/api/health/tokens', requireAuth, async (req, res) => {
   const results = [];
   
@@ -733,6 +744,7 @@ app.get('/api/health/tokens', requireAuth, async (req, res) => {
     results 
   });
 });
+*/
 
 // Avatar proxy endpoint to handle CORS
 
@@ -812,6 +824,8 @@ io.on('connection', (socket) => {
 });
 
 // Auto-recovery system with improved health monitoring
+// TEMPORARILY COMMENTED OUT
+/*
 setInterval(async () => {
   for (const [id, bot] of botInstances) {
     if (bot.isRunning && !bot.isPaused) {
@@ -897,8 +911,11 @@ setInterval(async () => {
     }
   }
 }, 60000); // Check every minute
+*/
 
 // Handle token invalid events from bots
+// TEMPORARILY COMMENTED OUT
+/*
 const handleTokenInvalid = async function(bot, id, info) {
   console.error(`Token invalid for instance ${id} (${info.username})`);
   
@@ -923,6 +940,7 @@ const handleTokenInvalid = async function(bot, id, info) {
     username: info.username
   });
 };
+*/
 
 const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
